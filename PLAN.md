@@ -146,15 +146,16 @@ All models are pydantic v2; JSON schemas exported to `backend/domain/schema/*.js
 Git repo initialized, first commit done (2026-09-13). Backend scaffold + contracts exist and are tested (16 tests). No engine, agents, API beyond /health, frontend, or synthetic documents yet.
 
 ## 9. Completed tasks
+- T3 (2026-09-13): engine/ costing, scoring, policy, diff, evaluate(); 14 golden tests; fixtures realigned. Risk formula: 0.5·min(defect/max_defect,1) + 0.5·min((1−on_time)/0.2,1), amplified by capacity utilisation above 80%.
 - T2 (2026-09-13): synthetic quotes A (pdf, wrong total), B (xlsx, formulas + cached values), C (email, injection) + .expected.json ground truth + 10 tests. Extracted text sizes: 644 / 450 / 999 chars.
 - T1 (2026-09-13): backend scaffold (uv, FastAPI, pydantic v2), 11 contracts + enums, JSON schema export, 11 fixtures (Supplier B example: 2,000 × 12.80, −2%, +250 shipping, 9% tax → landed 27,618.42), tests, /health.
 
 ## 10. In-progress tasks
-- T3: deterministic engine (validation, costing, scoring) + fixture realignment
+- T6: workflow core (run store, event log, state machine for the straight line) + agent protocols + mock agents
 
 ## 11. Next tasks (small, independent; parallelizable across 4 people)
 
-Chores (fold into the next task touching the area): fixtures in data/fixtures/ disagree with §15 (A lead 21 d, C price 14.20, ids `sup-b`, B stated total 25,088) → realign in T3. PDF/xlsx generator embeds timestamps → set fixed metadata so regenerate is byte-stable (T5). NormalizedQuote lacks quote_date/buyer_reference → add only if the Document Agent needs them (T5).
+Chores (fold into the next task touching the area): PDF/xlsx generator embeds timestamps → set fixed metadata so regenerate is byte-stable (T5). NormalizedQuote lacks quote_date/buyer_reference → add only if the Document Agent needs them (T5).
 
 Supplier id convention: `sup_a`, `sup_b`, `sup_c`.
 
@@ -186,6 +187,8 @@ Week 3 queue: SSE stream; War Room UI (agent lanes, timeline, gates); interrupt 
 - D5 Storage Week 1: in-memory + JSON files. DynamoDB only if time allows; repository interface hides it.
 - D6 War Room realtime: SSE (simpler than WebSockets), polling fallback.
 - D11 Backend does its own tool loop; LLM calls are single-shot JSON tasks (extract / explain / draft / explain-diff). OpenClaw's role: hosted agent runtime on Lightsail that exposes the same four agent tasks and calls backend tools; decided finally in T10.
+- D13 Scoring weights 0.30/0.20/0.30/0.20 (see §15). Engine decisions from T3: missing supplier profile → ineligible (never fabricate); quote `capacity_units` decides eligibility, profile `max_capacity_units` feeds risk only; lead-time window = required_by − created_at; quotes are costed at the request quantity, with an informational issue if it differs from quantity_quoted.
+- D14 Contract additions allowed in T6: `QuoteChecks.capacity_ok`, `ValidatedQuote.pre_tax_total`. Regenerate schemas and fixtures when adding.
 - D12 Deployment target: AWS Lightsail Ubuntu 24.04, ap-southeast-1, 4 GB plan, same box as OpenClaw. Develop locally; deploy in Week 3. Live LLM calls kept minimal to preserve the USD 100 credit.
 - D7 Negotiation scope: price and lead time only; max 2 turns per supplier enforced by the state machine, not the prompt.
 - D8 Supplier documents are untrusted: extraction prompt wraps content in data delimiters; injection test fixture required in T2.
@@ -200,6 +203,7 @@ Week 3 queue: SSE stream; War Room UI (agent lanes, timeline, gates); interrupt 
 
 ## 15. Demo requirements
 - Request: 2,000 units of "Product X" (industrial widget, SKU PX-2000) within 14 days, budget 30,000 USD on the request, tax 9% in config.
+- Canonical scoring weights (D13): price 0.30, lead_time 0.20, reliability 0.30, risk 0.20. Verified rankings with all three eligible: 2,000 units → B 72.3, C 62.9, A 58.6; 5,000 units / 75,000 budget → C 62.9, A 58.6, B ineligible (capacity). With price at 0.40, A would beat C at 5,000; do not raise price weight.
 - 3 quotes (canonical demo values, used by generator, fixtures, and mock agents):
   - Supplier A "Apex Components" (PDF): 11.20/unit, MOQ 500, lead 13 d, shipping 400, no discount, capacity 20,000. Printed total deliberately wrong (22,040 instead of 22,800) → Calculation Mismatch → human confirms. History: on-time 82%, defect 4.5%.
   - Supplier B "Borealis Manufacturing" (xlsx): 12.80/unit, MOQ 1,000, lead 10 d, 2% discount, shipping 250, capacity 4,000, total 25,338. History: on-time 97%, defect 0.8%.
