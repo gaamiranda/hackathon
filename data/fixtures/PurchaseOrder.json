@@ -2,8 +2,8 @@
   "po_number": "PO-2026-0001",
   "run_id": "run-demo-001",
   "supplier": {
-    "supplier_id": "sup-b",
-    "name": "Supplier B Manufacturing"
+    "supplier_id": "sup_b",
+    "name": "Borealis Manufacturing AS"
   },
   "currency": "USD",
   "line_items": [

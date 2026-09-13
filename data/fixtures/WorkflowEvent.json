@@ -7,8 +7,12 @@
   "state_before": "SCORING",
   "state_after": "RECOMMENDED",
   "payload": {
-    "ranked": ["sup-b", "sup-a", "sup-c"],
-    "top_score": 87.4
+    "ranked": [
+      "sup_b",
+      "sup_a",
+      "sup_c"
+    ],
+    "top_score": 66.81
   },
-  "summary": "Scored 3 quotes; Supplier B ranks first with 87.4."
+  "summary": "Scored 3 quotes; Borealis (sup_b) ranks first with 66.81."
 }

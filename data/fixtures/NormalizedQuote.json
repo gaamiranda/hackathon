@@ -1,19 +1,19 @@
 {
-  "quote_id": "q-sup-b-001",
-  "supplier_id": "sup-b",
-  "supplier_name": "Supplier B Manufacturing",
+  "quote_id": "BOR-2026-0418",
+  "supplier_id": "sup_b",
+  "supplier_name": "Borealis Manufacturing AS",
   "source": "xlsx",
   "unit_price": "12.80",
   "currency": "USD",
   "quantity_quoted": 2000,
   "moq": 1000,
   "lead_time_days": 10,
-  "payment_terms": "Net 30",
+  "payment_terms": "Net 45",
   "shipping_cost": "250.00",
   "discount_pct": "2",
   "validity_date": "2026-10-15",
   "capacity_units": 4000,
-  "llm_stated_total": "25088.00",
+  "llm_stated_total": "25338.00",
   "field_confidence": {
     "unit_price": 0.98,
     "currency": 0.99,
@@ -24,5 +24,5 @@
     "shipping_cost": 0.93,
     "discount_pct": 0.91
   },
-  "raw_excerpt": "Product X | Qty 2000 | Unit price USD 12.80 | 2% volume discount | Shipping USD 250 | Lead time 10 days | MOQ 1000 | Net 30 | Total USD 25,088.00"
+  "raw_excerpt": "PX-2000 | Product X, industrial grade | 2000 | 12.8 | 25600.0 / Subtotal 25600.0 / Discount % 2 / Discount -512.0 / Shipping 250 / TOTAL (USD) 25338.0 / MOQ 1000 / Lead Time 10 / Net 45"
 }

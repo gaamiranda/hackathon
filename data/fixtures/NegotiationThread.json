@@ -1,6 +1,6 @@
 {
   "run_id": "run-demo-001",
-  "supplier_id": "sup-b",
+  "supplier_id": "sup_b",
   "turns": [
     {
       "role": "buyer",

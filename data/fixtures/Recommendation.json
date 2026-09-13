@@ -1,9 +1,13 @@
 {
   "run_id": "run-demo-001",
   "request_version": 1,
-  "ranked": ["sup-b", "sup-a", "sup-c"],
-  "recommended_supplier_id": "sup-b",
-  "rationale": "Supplier B scores 87.4/100: landed cost USD 27,618.42 is within the USD 30,000 budget, 10-day lead time meets the 14-day deadline, and a 98% on-time rate with 0.5% defects gives the strongest reliability. Supplier A is cheaper but its 21-day lead time misses the deadline. Supplier C is fast but the priciest.",
+  "ranked": [
+    "sup_b",
+    "sup_a",
+    "sup_c"
+  ],
+  "recommended_supplier_id": "sup_b",
+  "rationale": "Borealis (B) scores 66.81/100: landed cost USD 27,618.42 fits the USD 30,000 budget, the 10-day lead time meets the 14-day deadline, and a 97% on-time rate with 0.8% defects gives the best reliability and lowest risk. Apex (A) is cheapest at USD 24,852.00 but its 82% on-time rate and 4.5% defect rate carry high risk, and its printed total had to be corrected. Cobalt (C) is fastest but the most expensive at USD 29,212.00.",
   "change_explanation": null,
   "escalation": null
 }
