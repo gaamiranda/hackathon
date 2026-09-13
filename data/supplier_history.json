@@ -1,0 +1,46 @@
+[
+  {
+    "supplier_id": "sup_a",
+    "name": "Apex Components Ltd",
+    "on_time_rate": 0.82,
+    "defect_rate": 0.045,
+    "orders_completed": 38,
+    "avg_lead_time_days": 14,
+    "max_capacity_units": 20000,
+    "blacklisted": false,
+    "notes": "Cheapest on price; recurring late deliveries and quality complaints in 2025."
+  },
+  {
+    "supplier_id": "sup_b",
+    "name": "Borealis Manufacturing AS",
+    "on_time_rate": 0.97,
+    "defect_rate": 0.008,
+    "orders_completed": 52,
+    "avg_lead_time_days": 9,
+    "max_capacity_units": 4000,
+    "blacklisted": false,
+    "notes": "Excellent history; capacity capped at 4,000 units per month."
+  },
+  {
+    "supplier_id": "sup_c",
+    "name": "Cobalt Industrial",
+    "on_time_rate": 0.94,
+    "defect_rate": 0.015,
+    "orders_completed": 45,
+    "avg_lead_time_days": 8,
+    "max_capacity_units": 10000,
+    "blacklisted": false,
+    "notes": "Fast and scalable; premium pricing."
+  },
+  {
+    "supplier_id": "sup_d",
+    "name": "Delta Trading",
+    "on_time_rate": 0.65,
+    "defect_rate": 0.12,
+    "orders_completed": 6,
+    "avg_lead_time_days": 20,
+    "max_capacity_units": 5000,
+    "blacklisted": true,
+    "notes": "Blacklisted 2025-11 after repeated non-delivery."
+  }
+]

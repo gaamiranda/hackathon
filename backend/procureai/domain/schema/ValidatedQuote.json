@@ -18,6 +18,11 @@
         "math_ok": {
           "title": "Math Ok",
           "type": "boolean"
+        },
+        "capacity_ok": {
+          "default": true,
+          "title": "Capacity Ok",
+          "type": "boolean"
         }
       },
       "required": [
@@ -229,6 +234,19 @@
       ],
       "title": "Shipping"
     },
+    "pre_tax_total": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Pre Tax Total"
+    },
     "tax": {
       "anyOf": [
         {
@@ -279,6 +297,7 @@
     "subtotal",
     "discount",
     "shipping",
+    "pre_tax_total",
     "tax",
     "landed_cost",
     "checks"

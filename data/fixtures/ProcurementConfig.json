@@ -1,9 +1,9 @@
 {
   "weights": {
-    "price": 0.4,
+    "price": 0.3,
     "lead_time": 0.2,
-    "reliability": 0.25,
-    "risk": 0.15
+    "reliability": 0.3,
+    "risk": 0.2
   },
   "thresholds": {
     "max_defect_rate": 0.05,

@@ -63,8 +63,7 @@ def compute_costs(
       moq_ok       request.quantity ≥ moq
       lead_time_ok lead_time_days ≤ days_available(request)
       budget_ok    landed_cost ≤ request.budget
-      capacity     request.quantity ≤ capacity_units (issue only; QuoteChecks has
-                   no capacity field, scoring re-derives it via capacity_ok())
+      capacity_ok  request.quantity ≤ capacity_units (True when no capacity stated)
     """
     subtotal, discount, pre_tax = pre_tax_total(quote, request.quantity)
     tax = q2(pre_tax * config.tax_rate_pct / Decimal(100))
@@ -97,7 +96,8 @@ def compute_costs(
     if not budget_ok:
         issues.append(f"landed cost {landed} exceeds budget {request.budget}")
 
-    if not capacity_ok(quote, request):
+    cap_ok = capacity_ok(quote, request)
+    if not cap_ok:
         issues.append(f"quantity {request.quantity} exceeds supplier capacity {quote.capacity_units}")
 
     if quote.quantity_quoted != request.quantity:
@@ -111,8 +111,11 @@ def compute_costs(
         subtotal=subtotal,
         discount=discount,
         shipping=q2(quote.shipping_cost),
+        pre_tax_total=pre_tax,
         tax=tax,
         landed_cost=landed,
-        checks=QuoteChecks(moq_ok=moq_ok, lead_time_ok=lead_ok, budget_ok=budget_ok, math_ok=math_ok),
+        checks=QuoteChecks(
+            moq_ok=moq_ok, lead_time_ok=lead_ok, budget_ok=budget_ok, math_ok=math_ok, capacity_ok=cap_ok
+        ),
         issues=issues,
     )

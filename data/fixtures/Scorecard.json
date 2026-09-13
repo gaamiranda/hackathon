@@ -4,12 +4,12 @@
   "lead_time_days": 10,
   "reliability_score": 0.981,
   "risk_score": 0.155,
-  "total_score": 66.81,
+  "total_score": 72.3,
   "score_breakdown": {
-    "price": 14.62,
+    "price": 10.97,
     "lead_time": 15.0,
-    "reliability": 24.52,
-    "risk": 12.67
+    "reliability": 29.43,
+    "risk": 16.9
   },
   "eligible": true,
   "ineligibility_reasons": []

@@ -11,7 +11,6 @@ from procureai.domain.models import (
     SupplierProfile,
     ValidatedQuote,
 )
-from procureai.engine.costing import capacity_ok
 
 # Risk normalisation constants (see risk_score docstring).
 ON_TIME_FLOOR = 0.80  # on-time rate at/below this = maximum delivery risk
@@ -75,7 +74,7 @@ def ineligibility_reasons(
         reasons.append(f"lead time {vq.lead_time_days} d misses the deadline")
     if not vq.checks.budget_ok:
         reasons.append(f"landed cost {vq.landed_cost} over budget {request.budget}")
-    if not capacity_ok(vq, request):
+    if not vq.checks.capacity_ok:
         reasons.append(f"quantity {request.quantity} exceeds capacity {vq.capacity_units}")
     if profile is None:
         reasons.append("no supplier history on record")

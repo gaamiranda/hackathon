@@ -136,6 +136,15 @@ class ProcurementConfig(StrictModel):
 # --------------------------------------------------------------------------- #
 
 
+class RawDocument(StrictModel):
+    """A supplier document already reduced to plain text (parsed locally, never sent as binary)."""
+
+    doc_id: str
+    filename: str
+    source: QuoteSource
+    text: str
+
+
 class NormalizedQuote(StrictModel):
     """Output of the Document Agent. Untrusted content, already structured."""
 
@@ -165,6 +174,7 @@ class QuoteChecks(StrictModel):
     lead_time_ok: bool
     budget_ok: bool
     math_ok: bool
+    capacity_ok: bool = True
 
 
 class ValidatedQuote(NormalizedQuote):
@@ -173,6 +183,7 @@ class ValidatedQuote(NormalizedQuote):
     subtotal: Money
     discount: Money
     shipping: Money
+    pre_tax_total: Money
     tax: Money
     landed_cost: Money
     checks: QuoteChecks
@@ -304,6 +315,38 @@ class PurchaseOrder(StrictModel):
     approved_at: datetime
 
 
+# --------------------------------------------------------------------------- #
+# Run aggregate (workflow state owned by the backend)
+# --------------------------------------------------------------------------- #
+
+
+class PendingHumanKind(StrEnum):
+    EXTRACTION = "extraction"  # low-confidence / missing critical fields
+    CALC_MISMATCH = "calc_mismatch"  # stated total != computed total (G1)
+
+
+class PendingHuman(StrictModel):
+    kind: PendingHumanKind
+    quote_ids: list[str]
+    message: str
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class Run(StrictModel):
+    run_id: str
+    request: ProcurementRequest
+    config: ProcurementConfig
+    state: WorkflowState = WorkflowState.CREATED
+    documents: list[RawDocument] = Field(default_factory=list)
+    quotes: list[NormalizedQuote] = Field(default_factory=list)
+    validated: list[ValidatedQuote] = Field(default_factory=list)
+    scorecards: list[Scorecard] = Field(default_factory=list)
+    recommendation: Recommendation | None = None
+    pending_human: PendingHuman | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 # Every top-level contract, in export/fixture order.
 CONTRACT_MODELS: list[type[BaseModel]] = [
     ProcurementRequest,
@@ -317,4 +360,6 @@ CONTRACT_MODELS: list[type[BaseModel]] = [
     NegotiationThread,
     WorkflowEvent,
     PurchaseOrder,
+    RawDocument,
+    Run,
 ]

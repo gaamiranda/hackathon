@@ -1,0 +1,40 @@
+{
+  "$defs": {
+    "QuoteSource": {
+      "enum": [
+        "pdf",
+        "xlsx",
+        "email"
+      ],
+      "title": "QuoteSource",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A supplier document already reduced to plain text (parsed locally, never sent as binary).",
+  "properties": {
+    "doc_id": {
+      "title": "Doc Id",
+      "type": "string"
+    },
+    "filename": {
+      "title": "Filename",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/QuoteSource"
+    },
+    "text": {
+      "title": "Text",
+      "type": "string"
+    }
+  },
+  "required": [
+    "doc_id",
+    "filename",
+    "source",
+    "text"
+  ],
+  "title": "RawDocument",
+  "type": "object"
+}

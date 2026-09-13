@@ -64,7 +64,7 @@ def profiles() -> dict[str, SupplierProfile]:
 @pytest.fixture
 def config() -> ProcurementConfig:
     return ProcurementConfig(
-        weights=ScoringWeights(price=0.4, lead_time=0.2, reliability=0.25, risk=0.15),
+        weights=ScoringWeights(price=0.3, lead_time=0.2, reliability=0.3, risk=0.2),
         negotiation=NegotiationBoundaries(max_discount_ask_pct=D("5"), min_lead_time_days=5, max_rounds=2),
         tax_rate_pct=D("9"),
     )
@@ -88,7 +88,8 @@ def test_supplier_b_costs_at_2000_units(quotes, config):
     assert vq.subtotal - vq.discount + vq.shipping == D("25338.00")
     assert vq.tax == D("2280.42")
     assert vq.landed_cost == D("27618.42")
-    assert vq.checks.model_dump() == {"moq_ok": True, "lead_time_ok": True, "budget_ok": True, "math_ok": True}
+    assert vq.pre_tax_total == D("25338.00")
+    assert vq.checks.model_dump() == {"moq_ok": True, "lead_time_ok": True, "budget_ok": True, "math_ok": True, "capacity_ok": True}
     assert vq.issues == []
 
 
@@ -156,6 +157,9 @@ def test_interrupt_to_5000_units_flips_to_c(quotes, profiles, config):
     assert not b.eligible and "capacity 4000" in b.ineligibility_reasons[0]
     assert b.landed_cost == D("68637.30")  # 64000 − 1280 + 250 = 62970 × 1.09
 
+    with_a = evaluate(request(5000, "75000.00"), config, list(quotes.values()), profiles, include_math_mismatch=True).scorecards
+    assert [c.supplier_id for c in with_a] == ["sup_c", "sup_a", "sup_b"]
+
     lines = explain_diff(before, after)
     assert "Recommended supplier changed from sup_b to sup_c." in lines
     assert any(line.startswith("sup_b became ineligible because") for line in lines)
@@ -165,7 +169,7 @@ def test_single_eligible_quote_scores_100_on_price_and_lead(quotes, profiles, co
     vq = compute_costs(quotes["b"], request(), config)
     [card] = score([vq], profiles, request(), config)
     assert card.eligible
-    assert card.score_breakdown["price"] == pytest.approx(40.0)
+    assert card.score_breakdown["price"] == pytest.approx(30.0)
     assert card.score_breakdown["lead_time"] == pytest.approx(20.0)
 
 

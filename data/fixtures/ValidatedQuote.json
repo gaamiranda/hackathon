@@ -28,13 +28,15 @@
   "subtotal": "25600.00",
   "discount": "512.00",
   "shipping": "250.00",
+  "pre_tax_total": "25338.00",
   "tax": "2280.42",
   "landed_cost": "27618.42",
   "checks": {
     "moq_ok": true,
     "lead_time_ok": true,
     "budget_ok": true,
-    "math_ok": true
+    "math_ok": true,
+    "capacity_ok": true
   },
   "issues": []
 }

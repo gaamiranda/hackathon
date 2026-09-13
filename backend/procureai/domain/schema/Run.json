@@ -1,0 +1,1047 @@
+{
+  "$defs": {
+    "ApprovalRequirements": {
+      "additionalProperties": false,
+      "properties": {
+        "negotiation_send": {
+          "default": true,
+          "title": "Negotiation Send",
+          "type": "boolean"
+        },
+        "po_generation": {
+          "default": true,
+          "title": "Po Generation",
+          "type": "boolean"
+        }
+      },
+      "title": "ApprovalRequirements",
+      "type": "object"
+    },
+    "Escalation": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "Escalation",
+      "type": "object"
+    },
+    "NegotiationBoundaries": {
+      "additionalProperties": false,
+      "properties": {
+        "max_discount_ask_pct": {
+          "anyOf": [
+            {
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Max Discount Ask Pct"
+        },
+        "min_lead_time_days": {
+          "minimum": 0,
+          "title": "Min Lead Time Days",
+          "type": "integer"
+        },
+        "max_rounds": {
+          "default": 2,
+          "description": "Hard cap per supplier (G2)",
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Max Rounds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_discount_ask_pct",
+        "min_lead_time_days"
+      ],
+      "title": "NegotiationBoundaries",
+      "type": "object"
+    },
+    "NormalizedQuote": {
+      "additionalProperties": false,
+      "description": "Output of the Document Agent. Untrusted content, already structured.",
+      "properties": {
+        "quote_id": {
+          "title": "Quote Id",
+          "type": "string"
+        },
+        "supplier_id": {
+          "title": "Supplier Id",
+          "type": "string"
+        },
+        "supplier_name": {
+          "title": "Supplier Name",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/QuoteSource"
+        },
+        "unit_price": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        },
+        "currency": {
+          "description": "ISO-4217 code",
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "quantity_quoted": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity Quoted",
+          "type": "integer"
+        },
+        "moq": {
+          "minimum": 0,
+          "title": "Moq",
+          "type": "integer"
+        },
+        "lead_time_days": {
+          "minimum": 0,
+          "title": "Lead Time Days",
+          "type": "integer"
+        },
+        "payment_terms": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payment Terms"
+        },
+        "shipping_cost": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Shipping Cost"
+        },
+        "discount_pct": {
+          "anyOf": [
+            {
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Discount Pct"
+        },
+        "validity_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validity Date"
+        },
+        "capacity_units": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capacity Units"
+        },
+        "llm_stated_total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total as written in the document; only used for mismatch detection (G1)",
+          "title": "Llm Stated Total"
+        },
+        "field_confidence": {
+          "additionalProperties": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "title": "Field Confidence",
+          "type": "object"
+        },
+        "raw_excerpt": {
+          "default": "",
+          "title": "Raw Excerpt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "quote_id",
+        "supplier_id",
+        "supplier_name",
+        "source",
+        "unit_price",
+        "currency",
+        "quantity_quoted",
+        "moq",
+        "lead_time_days"
+      ],
+      "title": "NormalizedQuote",
+      "type": "object"
+    },
+    "PendingHuman": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/PendingHumanKind"
+        },
+        "quote_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Quote Ids",
+          "type": "array"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "kind",
+        "quote_ids",
+        "message"
+      ],
+      "title": "PendingHuman",
+      "type": "object"
+    },
+    "PendingHumanKind": {
+      "enum": [
+        "extraction",
+        "calc_mismatch"
+      ],
+      "title": "PendingHumanKind",
+      "type": "string"
+    },
+    "ProcurementConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "weights": {
+          "$ref": "#/$defs/ScoringWeights"
+        },
+        "thresholds": {
+          "$ref": "#/$defs/Thresholds",
+          "default": {
+            "max_defect_rate": 0.05,
+            "min_confidence": 0.85,
+            "tie_margin": 2.0
+          }
+        },
+        "negotiation": {
+          "$ref": "#/$defs/NegotiationBoundaries"
+        },
+        "approvals": {
+          "$ref": "#/$defs/ApprovalRequirements",
+          "default": {
+            "negotiation_send": true,
+            "po_generation": true
+          }
+        },
+        "tax_rate_pct": {
+          "anyOf": [
+            {
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Tax Rate Pct"
+        }
+      },
+      "required": [
+        "weights",
+        "negotiation"
+      ],
+      "title": "ProcurementConfig",
+      "type": "object"
+    },
+    "ProcurementRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "product": {
+          "title": "Product",
+          "type": "string"
+        },
+        "quantity": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity",
+          "type": "integer"
+        },
+        "required_by": {
+          "format": "date",
+          "title": "Required By",
+          "type": "string"
+        },
+        "budget": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Budget"
+        },
+        "currency": {
+          "description": "ISO-4217 code",
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "version": {
+          "default": 1,
+          "description": "Increments on every interrupt",
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "product",
+        "quantity",
+        "required_by",
+        "budget",
+        "currency",
+        "created_at"
+      ],
+      "title": "ProcurementRequest",
+      "type": "object"
+    },
+    "QuoteChecks": {
+      "additionalProperties": false,
+      "properties": {
+        "moq_ok": {
+          "title": "Moq Ok",
+          "type": "boolean"
+        },
+        "lead_time_ok": {
+          "title": "Lead Time Ok",
+          "type": "boolean"
+        },
+        "budget_ok": {
+          "title": "Budget Ok",
+          "type": "boolean"
+        },
+        "math_ok": {
+          "title": "Math Ok",
+          "type": "boolean"
+        },
+        "capacity_ok": {
+          "default": true,
+          "title": "Capacity Ok",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "moq_ok",
+        "lead_time_ok",
+        "budget_ok",
+        "math_ok"
+      ],
+      "title": "QuoteChecks",
+      "type": "object"
+    },
+    "QuoteSource": {
+      "enum": [
+        "pdf",
+        "xlsx",
+        "email"
+      ],
+      "title": "QuoteSource",
+      "type": "string"
+    },
+    "RawDocument": {
+      "additionalProperties": false,
+      "description": "A supplier document already reduced to plain text (parsed locally, never sent as binary).",
+      "properties": {
+        "doc_id": {
+          "title": "Doc Id",
+          "type": "string"
+        },
+        "filename": {
+          "title": "Filename",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/QuoteSource"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "doc_id",
+        "filename",
+        "source",
+        "text"
+      ],
+      "title": "RawDocument",
+      "type": "object"
+    },
+    "Recommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "request_version": {
+          "minimum": 1,
+          "title": "Request Version",
+          "type": "integer"
+        },
+        "ranked": {
+          "description": "supplier_ids, best first",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ranked",
+          "type": "array"
+        },
+        "recommended_supplier_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recommended Supplier Id"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "change_explanation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Change Explanation"
+        },
+        "escalation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Escalation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "run_id",
+        "request_version",
+        "ranked",
+        "recommended_supplier_id",
+        "rationale"
+      ],
+      "title": "Recommendation",
+      "type": "object"
+    },
+    "Scorecard": {
+      "additionalProperties": false,
+      "properties": {
+        "supplier_id": {
+          "title": "Supplier Id",
+          "type": "string"
+        },
+        "landed_cost": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Landed Cost"
+        },
+        "lead_time_days": {
+          "minimum": 0,
+          "title": "Lead Time Days",
+          "type": "integer"
+        },
+        "reliability_score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Reliability Score",
+          "type": "number"
+        },
+        "risk_score": {
+          "description": "0 = no risk, 1 = maximum risk",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Risk Score",
+          "type": "number"
+        },
+        "total_score": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Total Score",
+          "type": "number"
+        },
+        "score_breakdown": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Score Breakdown",
+          "type": "object"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "ineligibility_reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ineligibility Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "supplier_id",
+        "landed_cost",
+        "lead_time_days",
+        "reliability_score",
+        "risk_score",
+        "total_score",
+        "eligible"
+      ],
+      "title": "Scorecard",
+      "type": "object"
+    },
+    "ScoringWeights": {
+      "additionalProperties": false,
+      "properties": {
+        "price": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Price",
+          "type": "number"
+        },
+        "lead_time": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Lead Time",
+          "type": "number"
+        },
+        "reliability": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Reliability",
+          "type": "number"
+        },
+        "risk": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Risk",
+          "type": "number"
+        }
+      },
+      "required": [
+        "price",
+        "lead_time",
+        "reliability",
+        "risk"
+      ],
+      "title": "ScoringWeights",
+      "type": "object"
+    },
+    "Thresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "max_defect_rate": {
+          "default": 0.05,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Max Defect Rate",
+          "type": "number"
+        },
+        "min_confidence": {
+          "default": 0.85,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "tie_margin": {
+          "default": 2.0,
+          "description": "Top-2 score gap that triggers escalation",
+          "minimum": 0,
+          "title": "Tie Margin",
+          "type": "number"
+        }
+      },
+      "title": "Thresholds",
+      "type": "object"
+    },
+    "ValidatedQuote": {
+      "additionalProperties": false,
+      "description": "NormalizedQuote plus engine-computed costs and checks.",
+      "properties": {
+        "quote_id": {
+          "title": "Quote Id",
+          "type": "string"
+        },
+        "supplier_id": {
+          "title": "Supplier Id",
+          "type": "string"
+        },
+        "supplier_name": {
+          "title": "Supplier Name",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/QuoteSource"
+        },
+        "unit_price": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        },
+        "currency": {
+          "description": "ISO-4217 code",
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "quantity_quoted": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity Quoted",
+          "type": "integer"
+        },
+        "moq": {
+          "minimum": 0,
+          "title": "Moq",
+          "type": "integer"
+        },
+        "lead_time_days": {
+          "minimum": 0,
+          "title": "Lead Time Days",
+          "type": "integer"
+        },
+        "payment_terms": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payment Terms"
+        },
+        "shipping_cost": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Shipping Cost"
+        },
+        "discount_pct": {
+          "anyOf": [
+            {
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "0",
+          "title": "Discount Pct"
+        },
+        "validity_date": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Validity Date"
+        },
+        "capacity_units": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capacity Units"
+        },
+        "llm_stated_total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total as written in the document; only used for mismatch detection (G1)",
+          "title": "Llm Stated Total"
+        },
+        "field_confidence": {
+          "additionalProperties": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "type": "number"
+          },
+          "title": "Field Confidence",
+          "type": "object"
+        },
+        "raw_excerpt": {
+          "default": "",
+          "title": "Raw Excerpt",
+          "type": "string"
+        },
+        "subtotal": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Subtotal"
+        },
+        "discount": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Discount"
+        },
+        "shipping": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Shipping"
+        },
+        "pre_tax_total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Pre Tax Total"
+        },
+        "tax": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Tax"
+        },
+        "landed_cost": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Landed Cost"
+        },
+        "checks": {
+          "$ref": "#/$defs/QuoteChecks"
+        },
+        "issues": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "quote_id",
+        "supplier_id",
+        "supplier_name",
+        "source",
+        "unit_price",
+        "currency",
+        "quantity_quoted",
+        "moq",
+        "lead_time_days",
+        "subtotal",
+        "discount",
+        "shipping",
+        "pre_tax_total",
+        "tax",
+        "landed_cost",
+        "checks"
+      ],
+      "title": "ValidatedQuote",
+      "type": "object"
+    },
+    "WorkflowState": {
+      "enum": [
+        "CREATED",
+        "EXTRACTING",
+        "NEEDS_HUMAN_EXTRACTION",
+        "VALIDATING",
+        "CALC_MISMATCH",
+        "ENRICHING",
+        "SCORING",
+        "RECOMMENDED",
+        "NEGOTIATION_DRAFTED",
+        "AWAITING_NEGOTIATION_APPROVAL",
+        "NEGOTIATING",
+        "COUNTER_RECEIVED",
+        "RE_SCORING",
+        "AWAITING_PO_APPROVAL",
+        "PO_GENERATED",
+        "REPLANNING"
+      ],
+      "title": "WorkflowState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "request": {
+      "$ref": "#/$defs/ProcurementRequest"
+    },
+    "config": {
+      "$ref": "#/$defs/ProcurementConfig"
+    },
+    "state": {
+      "$ref": "#/$defs/WorkflowState",
+      "default": "CREATED"
+    },
+    "documents": {
+      "items": {
+        "$ref": "#/$defs/RawDocument"
+      },
+      "title": "Documents",
+      "type": "array"
+    },
+    "quotes": {
+      "items": {
+        "$ref": "#/$defs/NormalizedQuote"
+      },
+      "title": "Quotes",
+      "type": "array"
+    },
+    "validated": {
+      "items": {
+        "$ref": "#/$defs/ValidatedQuote"
+      },
+      "title": "Validated",
+      "type": "array"
+    },
+    "scorecards": {
+      "items": {
+        "$ref": "#/$defs/Scorecard"
+      },
+      "title": "Scorecards",
+      "type": "array"
+    },
+    "recommendation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Recommendation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "pending_human": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PendingHuman"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "request",
+    "config",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "Run",
+  "type": "object"
+}
