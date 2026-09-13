@@ -206,11 +206,7 @@ class Orchestrator:
                              {"quote_ids": [q.quote_id for q in run.quotes]})
 
     def _quote_id_for_document(self, run: Run, doc_id: str) -> str | None:
-        """doc_id → quote_id via the audit log (the Run aggregate keeps no mapping)."""
-        for event in reversed(self.store.events(run.run_id)):
-            if event.type == "quote.extracted" and event.payload.get("doc_id") == doc_id:
-                return event.payload.get("quote_id")
-        return None
+        return next((q.quote_id for q in run.quotes if q.doc_id == doc_id), None)
 
     def _low_confidence_fields(self, run: Run, quote: NormalizedQuote) -> list[str]:
         threshold = run.config.thresholds.min_confidence

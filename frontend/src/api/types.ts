@@ -61,6 +61,8 @@ export interface RawDocument {
 
 export interface NormalizedQuote {
   quote_id: string
+  /** RawDocument this quote was extracted from; null for hand-written fixtures. */
+  doc_id: string | null
   supplier_id: string
   supplier_name: string
   source: QuoteSource

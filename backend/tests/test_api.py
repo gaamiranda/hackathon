@@ -87,14 +87,41 @@ def test_replace_document(client):
     run_id = create(client)
     run = upload(client, run_id, ["supplier_b_borealis.xlsx"]).json()
     doc_id = run["documents"][0]["doc_id"]
+    assert run["quotes"][0]["doc_id"] == doc_id
     files = [("files", ("supplier_c_cobalt.eml.txt", (SYNTHETIC / "supplier_c_cobalt.eml.txt").read_bytes()))]
     r = client.post(f"/runs/{run_id}/documents/{doc_id}/replace", files=files)
     assert r.status_code == 200, r.text
     run = r.json()
     assert [d["filename"] for d in run["documents"]] == ["supplier_c_cobalt.eml.txt"]
     assert [q["supplier_id"] for q in run["quotes"]] == ["sup_c"]
+    assert run["quotes"][0]["doc_id"] == run["documents"][0]["doc_id"]
     assert run["state"] == "EXTRACTED"
     assert client.post(f"/runs/{run_id}/documents/nope/replace", files=files).status_code == 404
+
+
+def test_lowconf_filename_triggers_extraction_gate(client):
+    """Mock knob: a filename containing "lowconf" gets 0.5 confidence on unit_price/lead_time_days (G6)."""
+    run_id = create(client)
+    files = [("files", ("supplier_c_lowconf.eml.txt", (SYNTHETIC / "supplier_c_cobalt.eml.txt").read_bytes())),
+             ("files", ("supplier_b_borealis.xlsx", (SYNTHETIC / "supplier_b_borealis.xlsx").read_bytes()))]
+    r = client.post(f"/runs/{run_id}/documents", files=files)
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "NEEDS_HUMAN_EXTRACTION"
+    assert run["pending_human"]["kind"] == "extraction"
+    assert run["pending_human"]["quote_ids"] == ["CI-Q-7731"]
+    assert run["pending_human"]["details"]["fields"] == {"CI-Q-7731": ["unit_price", "lead_time_days"]}
+    quote = next(q for q in run["quotes"] if q["quote_id"] == "CI-Q-7731")
+    assert quote["field_confidence"]["unit_price"] == 0.5 and quote["field_confidence"]["lead_time_days"] == 0.5
+    assert quote["doc_id"] == next(d["doc_id"] for d in run["documents"] if "lowconf" in d["filename"])
+
+    r = client.post(f"/runs/{run_id}/quotes/CI-Q-7731/correct", json={"patch": {"unit_price": "13.40", "lead_time_days": 9}})
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "RECOMMENDED" and run["pending_human"] is None
+    assert run["recommendation"]["recommended_supplier_id"] == "sup_b"
+    types = [e["type"] for e in client.get(f"/runs/{run_id}/events").json()]
+    assert types.index("extraction.needs_human") < types.index("quote.corrected") < types.index("extraction.resumed")
 
 
 def test_errors(client):
@@ -138,6 +165,7 @@ def test_sse_replays_events(client):
             block[key] = value
 
     assert [int(b["id"]) for b in received] == [e["seq"] for e in expected]
-    assert [b["event"] for b in received] == [e["type"] for e in expected]
+    # no `event:` line (T8b): every message reaches EventSource.onmessage; the type travels inside the JSON
+    assert all(set(b) == {"id", "data"} for b in received)
+    assert [json.loads(b["data"])["type"] for b in received] == [e["type"] for e in expected]
     assert json.loads(received[-1]["data"])["type"] == "recommendation.ready"
-    assert received[-1]["event"] == "recommendation.ready"

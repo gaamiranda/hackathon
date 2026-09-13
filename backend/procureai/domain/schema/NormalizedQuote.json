@@ -17,6 +17,19 @@
       "title": "Quote Id",
       "type": "string"
     },
+    "doc_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "RawDocument this quote was extracted from (set by the Document Agent)",
+      "title": "Doc Id"
+    },
     "supplier_id": {
       "title": "Supplier Id",
       "type": "string"

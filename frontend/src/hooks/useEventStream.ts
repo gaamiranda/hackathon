@@ -35,16 +35,14 @@ export function useEventStream(runId: string | undefined, onEvent?: (e: Workflow
       setStatus('connecting')
       source = new EventSource(api.streamUrl(runId, lastSeq.current))
       source.onopen = () => setStatus('live')
-      // The backend sets `event: <type>` per message, so `onmessage` never fires; catch all via a wildcard listener.
-      // EventSource has no wildcard, so we listen on the known types and fall back to a generic handler.
-      const handle = (raw: MessageEvent) => {
+      // The backend sends no `event:` line, so every message arrives here; the type is inside the JSON.
+      source.onmessage = (raw: MessageEvent) => {
         const event = JSON.parse(raw.data as string) as WorkflowEvent
         if (event.seq <= lastSeq.current) return
         lastSeq.current = event.seq
         setEvents((prev) => [...prev, event])
         onEventRef.current?.(event)
       }
-      for (const type of EVENT_TYPES) source.addEventListener(type, handle)
       source.onerror = () => {
         source?.close()
         // EventSource hides the HTTP status; probe the run so a 404 (backend restarted, in-memory store lost)
@@ -76,38 +74,3 @@ export function useEventStream(runId: string | undefined, onEvent?: (e: Workflow
 
   return { events, status }
 }
-
-/** Event contract (PLAN.md §6) + Week 2 placeholders. EventSource needs explicit listeners per `event:` name. */
-export const EVENT_TYPES = [
-  'run.created',
-  'documents.added',
-  'document.replaced',
-  'agent.started',
-  'agent.finished',
-  'agent.failed',
-  'quote.extracted',
-  'extraction.needs_human',
-  'extraction.completed',
-  'quote.corrected',
-  'extraction.resumed',
-  'validation.started',
-  'quotes.validated',
-  'calc.mismatch',
-  'quote.math_confirmed',
-  'quote.rejected',
-  'mismatch.resolved',
-  'enrichment.started',
-  'scoring.started',
-  'quotes.scored',
-  'recommendation.ranked',
-  'recommendation.ready',
-  // Week 2+
-  'negotiation.drafted',
-  'negotiation.approved',
-  'negotiation.sent',
-  'supplier.counter_offer',
-  'requirement.changed',
-  'replan.started',
-  'replan.completed',
-  'po.generated',
-] as const

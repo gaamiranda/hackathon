@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
-from procureai.api.deps import get_orchestrator
+from procureai.api.deps import get_orchestrator, get_shutdown_event
 from procureai.api.extract_text import UnsupportedDocument, to_text
 from procureai.config.settings import get_settings
 from procureai.domain.models import (
@@ -121,7 +121,8 @@ async def _read_documents(request: Request) -> list[RawDocument]:
 
 
 def _sse(event: WorkflowEvent) -> str:
-    return f"id: {event.seq}\nevent: {event.type}\ndata: {event.model_dump_json()}\n\n"
+    # No `event:` line: browsers then deliver everything via EventSource.onmessage; `type` is inside the JSON.
+    return f"id: {event.seq}\ndata: {event.model_dump_json()}\n\n"
 
 
 # ----------------------------------------------------------------------------- routes
@@ -196,8 +197,10 @@ def list_events(run_id: str, since: int = Query(-1, description="return events w
 @router.get("/{run_id}/events/stream")
 async def stream_events(run_id: str, request: Request, since: int = Query(-1),
                         follow: bool = Query(True, description="false = close after replaying stored events"),
-                        orch: Orchestrator = Depends(get_orchestrator)) -> StreamingResponse:
-    """SSE: replay events with seq > since, then (follow=true) live events with `: keepalive` every 15 s."""
+                        orch: Orchestrator = Depends(get_orchestrator),
+                        shutdown: asyncio.Event = Depends(get_shutdown_event)) -> StreamingResponse:
+    """SSE: replay events with seq > since, then (follow=true) live events with `: keepalive` every 15 s.
+    Returns as soon as the client disconnects or the app shuts down (an open stream must not block uvicorn)."""
     orch.store.get(run_id)
     loop = asyncio.get_running_loop()
 
@@ -209,12 +212,18 @@ async def stream_events(run_id: str, request: Request, since: int = Query(-1),
             for event in orch.store.events(run_id, after_seq=since):
                 last = event.seq
                 yield _sse(event)
-            while follow and not await request.is_disconnected():
-                try:
-                    event = await asyncio.wait_for(queue.get(), timeout=KEEPALIVE_SECONDS)
-                except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
+            while follow and not shutdown.is_set() and not await request.is_disconnected():
+                getter = asyncio.ensure_future(queue.get())
+                stopper = asyncio.ensure_future(shutdown.wait())
+                done, _ = await asyncio.wait({getter, stopper}, timeout=KEEPALIVE_SECONDS,
+                                             return_when=asyncio.FIRST_COMPLETED)
+                stopper.cancel()
+                if getter not in done:
+                    getter.cancel()
+                    if not done:  # timeout, not shutdown
+                        yield ": keepalive\n\n"
                     continue
+                event = getter.result()
                 if event.seq > last:
                     last = event.seq
                     yield _sse(event)

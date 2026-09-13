@@ -150,6 +150,7 @@ class NormalizedQuote(StrictModel):
     """Output of the Document Agent. Untrusted content, already structured."""
 
     quote_id: str
+    doc_id: str | None = Field(default=None, description="RawDocument this quote was extracted from (set by the Document Agent)")
     supplier_id: str
     supplier_name: str
     source: QuoteSource

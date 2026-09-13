@@ -18,20 +18,49 @@ SYNTHETIC_DIR = DATA_DIR / "synthetic"
 SUPPLIER_HISTORY = DATA_DIR / "supplier_history.json"
 
 
+# Demo knob: a filename containing this token gets low confidence on these fields (→ NEEDS_HUMAN_EXTRACTION, G6).
+LOWCONF_TOKEN = "lowconf"
+LOWCONF_FIELDS = ("unit_price", "lead_time_days")
+LOWCONF_VALUE = 0.5
+
+
 class MockDocumentAgent:
-    """Returns data/synthetic/<filename>.expected.json for a known filename."""
+    """Returns data/synthetic/<filename>.expected.json for a known filename.
+
+    `<name>_lowconf<ext>` (e.g. supplier_c_lowconf.eml.txt) maps to the matching supplier's ground truth
+    with `unit_price` and `lead_time_days` confidence lowered to 0.5, to demo the extraction gate."""
 
     def __init__(self, synthetic_dir: Path = SYNTHETIC_DIR) -> None:
         self.synthetic_dir = synthetic_dir
 
     def extract(self, doc: RawDocument) -> NormalizedQuote:
-        expected = self.synthetic_dir / f"{Path(doc.filename).name}.expected.json"
-        if not expected.exists():
+        name = Path(doc.filename).name
+        lowconf = LOWCONF_TOKEN in name
+        expected = self._ground_truth(name)
+        if expected is None:
             known = sorted(p.name.removesuffix(".expected.json") for p in self.synthetic_dir.glob("*.expected.json"))
             raise FileNotFoundError(
                 f"MockDocumentAgent has no ground truth for '{doc.filename}'. Known files: {known}"
             )
-        return NormalizedQuote.model_validate_json(expected.read_text())
+        quote = NormalizedQuote.model_validate_json(expected.read_text())
+        confidence = quote.field_confidence
+        if lowconf:
+            confidence = {**confidence, **{f: LOWCONF_VALUE for f in LOWCONF_FIELDS}}
+        return quote.model_copy(update={"doc_id": doc.doc_id, "field_confidence": confidence})
+
+    def _ground_truth(self, name: str) -> Path | None:
+        direct = self.synthetic_dir / f"{name}.expected.json"
+        if direct.exists():
+            return direct
+        if LOWCONF_TOKEN not in name:
+            return None
+        # supplier_c_cobalt_lowconf.eml.txt → supplier_c_cobalt.eml.txt; supplier_c_lowconf.eml.txt → supplier_c_*.eml.txt
+        stripped = self.synthetic_dir / f"{name.replace('_' + LOWCONF_TOKEN, '').replace(LOWCONF_TOKEN, '')}.expected.json"
+        if stripped.exists():
+            return stripped
+        prefix, _, suffix = name.partition(LOWCONF_TOKEN)
+        matches = sorted(self.synthetic_dir.glob(f"{prefix}*{suffix}.expected.json"))
+        return matches[0] if len(matches) == 1 else None
 
 
 class MockSupplierIntelAgent:
