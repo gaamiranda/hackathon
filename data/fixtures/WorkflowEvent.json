@@ -1,0 +1,14 @@
+{
+  "run_id": "run-demo-001",
+  "seq": 7,
+  "ts": "2026-09-15T09:05:12Z",
+  "actor": "engine",
+  "type": "SCORING_COMPLETED",
+  "state_before": "SCORING",
+  "state_after": "RECOMMENDED",
+  "payload": {
+    "ranked": ["sup-b", "sup-a", "sup-c"],
+    "top_score": 87.4
+  },
+  "summary": "Scored 3 quotes; Supplier B ranks first with 87.4."
+}

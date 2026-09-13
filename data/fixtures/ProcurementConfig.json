@@ -1,0 +1,23 @@
+{
+  "weights": {
+    "price": 0.35,
+    "lead_time": 0.25,
+    "reliability": 0.25,
+    "risk": 0.15
+  },
+  "thresholds": {
+    "max_defect_rate": 0.05,
+    "min_confidence": 0.85,
+    "tie_margin": 2.0
+  },
+  "negotiation": {
+    "max_discount_ask_pct": "5",
+    "min_lead_time_days": 5,
+    "max_rounds": 2
+  },
+  "approvals": {
+    "negotiation_send": true,
+    "po_generation": true
+  },
+  "tax_rate_pct": "9"
+}

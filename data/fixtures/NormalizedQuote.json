@@ -1,0 +1,28 @@
+{
+  "quote_id": "q-sup-b-001",
+  "supplier_id": "sup-b",
+  "supplier_name": "Supplier B Manufacturing",
+  "source": "xlsx",
+  "unit_price": "12.80",
+  "currency": "USD",
+  "quantity_quoted": 2000,
+  "moq": 1000,
+  "lead_time_days": 10,
+  "payment_terms": "Net 30",
+  "shipping_cost": "250.00",
+  "discount_pct": "2",
+  "validity_date": "2026-10-15",
+  "capacity_units": 4000,
+  "llm_stated_total": "25088.00",
+  "field_confidence": {
+    "unit_price": 0.98,
+    "currency": 0.99,
+    "quantity_quoted": 0.97,
+    "moq": 0.95,
+    "lead_time_days": 0.96,
+    "payment_terms": 0.9,
+    "shipping_cost": 0.93,
+    "discount_pct": 0.91
+  },
+  "raw_excerpt": "Product X | Qty 2000 | Unit price USD 12.80 | 2% volume discount | Shipping USD 250 | Lead time 10 days | MOQ 1000 | Net 30 | Total USD 25,088.00"
+}

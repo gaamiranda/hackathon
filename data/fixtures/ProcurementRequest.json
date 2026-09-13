@@ -1,0 +1,10 @@
+{
+  "id": "req-demo-001",
+  "product": "Product X",
+  "quantity": 2000,
+  "required_by": "2026-09-29",
+  "budget": "30000.00",
+  "currency": "USD",
+  "created_at": "2026-09-15T09:00:00Z",
+  "version": 1
+}

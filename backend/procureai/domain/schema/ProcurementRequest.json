@@ -1,0 +1,65 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "product": {
+      "title": "Product",
+      "type": "string"
+    },
+    "quantity": {
+      "exclusiveMinimum": 0,
+      "title": "Quantity",
+      "type": "integer"
+    },
+    "required_by": {
+      "format": "date",
+      "title": "Required By",
+      "type": "string"
+    },
+    "budget": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Budget"
+    },
+    "currency": {
+      "description": "ISO-4217 code",
+      "pattern": "^[A-Z]{3}$",
+      "title": "Currency",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "version": {
+      "default": 1,
+      "description": "Increments on every interrupt",
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "product",
+    "quantity",
+    "required_by",
+    "budget",
+    "currency",
+    "created_at"
+  ],
+  "title": "ProcurementRequest",
+  "type": "object"
+}

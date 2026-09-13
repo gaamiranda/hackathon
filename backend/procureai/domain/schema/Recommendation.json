@@ -1,0 +1,90 @@
+{
+  "$defs": {
+    "Escalation": {
+      "additionalProperties": false,
+      "properties": {
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "details": {
+          "additionalProperties": true,
+          "title": "Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "Escalation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "request_version": {
+      "minimum": 1,
+      "title": "Request Version",
+      "type": "integer"
+    },
+    "ranked": {
+      "description": "supplier_ids, best first",
+      "items": {
+        "type": "string"
+      },
+      "title": "Ranked",
+      "type": "array"
+    },
+    "recommended_supplier_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Recommended Supplier Id"
+    },
+    "rationale": {
+      "title": "Rationale",
+      "type": "string"
+    },
+    "change_explanation": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Change Explanation"
+    },
+    "escalation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Escalation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "run_id",
+    "request_version",
+    "ranked",
+    "recommended_supplier_id",
+    "rationale"
+  ],
+  "title": "Recommendation",
+  "type": "object"
+}

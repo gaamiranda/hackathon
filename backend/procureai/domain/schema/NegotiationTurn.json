@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "NegotiationOffer": {
+      "additionalProperties": false,
+      "description": "Price and lead time only (D7).",
+      "properties": {
+        "unit_price": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        },
+        "lead_time_days": {
+          "minimum": 0,
+          "title": "Lead Time Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit_price",
+        "lead_time_days"
+      ],
+      "title": "NegotiationOffer",
+      "type": "object"
+    },
+    "NegotiationRole": {
+      "enum": [
+        "buyer",
+        "supplier"
+      ],
+      "title": "NegotiationRole",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "role": {
+      "$ref": "#/$defs/NegotiationRole"
+    },
+    "message": {
+      "title": "Message",
+      "type": "string"
+    },
+    "offer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NegotiationOffer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "approved_by_human": {
+      "default": false,
+      "title": "Approved By Human",
+      "type": "boolean"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    }
+  },
+  "required": [
+    "role",
+    "message",
+    "ts"
+  ],
+  "title": "NegotiationTurn",
+  "type": "object"
+}

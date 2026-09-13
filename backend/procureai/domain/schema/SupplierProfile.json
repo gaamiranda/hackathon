@@ -1,0 +1,61 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "supplier_id": {
+      "title": "Supplier Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "on_time_rate": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "On Time Rate",
+      "type": "number"
+    },
+    "defect_rate": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Defect Rate",
+      "type": "number"
+    },
+    "orders_completed": {
+      "minimum": 0,
+      "title": "Orders Completed",
+      "type": "integer"
+    },
+    "avg_lead_time_days": {
+      "minimum": 0,
+      "title": "Avg Lead Time Days",
+      "type": "integer"
+    },
+    "max_capacity_units": {
+      "minimum": 0,
+      "title": "Max Capacity Units",
+      "type": "integer"
+    },
+    "blacklisted": {
+      "default": false,
+      "title": "Blacklisted",
+      "type": "boolean"
+    },
+    "notes": {
+      "default": "",
+      "title": "Notes",
+      "type": "string"
+    }
+  },
+  "required": [
+    "supplier_id",
+    "name",
+    "on_time_rate",
+    "defect_rate",
+    "orders_completed",
+    "avg_lead_time_days",
+    "max_capacity_units"
+  ],
+  "title": "SupplierProfile",
+  "type": "object"
+}

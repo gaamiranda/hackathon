@@ -1,0 +1,32 @@
+{
+  "run_id": "run-demo-001",
+  "supplier_id": "sup-b",
+  "turns": [
+    {
+      "role": "buyer",
+      "message": "Thank you for the quote on 2,000 units of Product X. Could you offer USD 12.40 per unit while keeping the 10-day lead time? We are ready to confirm promptly.",
+      "offer": {
+        "unit_price": "12.40",
+        "lead_time_days": 10
+      },
+      "approved_by_human": true,
+      "ts": "2026-09-15T09:20:00Z"
+    },
+    {
+      "role": "supplier",
+      "message": "We can meet you at USD 12.60 per unit and ship in 9 days.",
+      "offer": {
+        "unit_price": "12.60",
+        "lead_time_days": 9
+      },
+      "approved_by_human": false,
+      "ts": "2026-09-15T09:21:00Z"
+    }
+  ],
+  "status": "open",
+  "boundaries": {
+    "max_discount_ask_pct": "5",
+    "min_lead_time_days": 5,
+    "max_rounds": 2
+  }
+}

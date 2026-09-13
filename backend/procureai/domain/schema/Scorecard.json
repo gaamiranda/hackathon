@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "supplier_id": {
+      "title": "Supplier Id",
+      "type": "string"
+    },
+    "landed_cost": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Landed Cost"
+    },
+    "lead_time_days": {
+      "minimum": 0,
+      "title": "Lead Time Days",
+      "type": "integer"
+    },
+    "reliability_score": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Reliability Score",
+      "type": "number"
+    },
+    "risk_score": {
+      "description": "0 = no risk, 1 = maximum risk",
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Risk Score",
+      "type": "number"
+    },
+    "total_score": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Total Score",
+      "type": "number"
+    },
+    "score_breakdown": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Score Breakdown",
+      "type": "object"
+    },
+    "eligible": {
+      "title": "Eligible",
+      "type": "boolean"
+    },
+    "ineligibility_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ineligibility Reasons",
+      "type": "array"
+    }
+  },
+  "required": [
+    "supplier_id",
+    "landed_cost",
+    "lead_time_days",
+    "reliability_score",
+    "risk_score",
+    "total_score",
+    "eligible"
+  ],
+  "title": "Scorecard",
+  "type": "object"
+}

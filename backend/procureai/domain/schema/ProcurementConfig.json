@@ -1,0 +1,169 @@
+{
+  "$defs": {
+    "ApprovalRequirements": {
+      "additionalProperties": false,
+      "properties": {
+        "negotiation_send": {
+          "default": true,
+          "title": "Negotiation Send",
+          "type": "boolean"
+        },
+        "po_generation": {
+          "default": true,
+          "title": "Po Generation",
+          "type": "boolean"
+        }
+      },
+      "title": "ApprovalRequirements",
+      "type": "object"
+    },
+    "NegotiationBoundaries": {
+      "additionalProperties": false,
+      "properties": {
+        "max_discount_ask_pct": {
+          "anyOf": [
+            {
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Max Discount Ask Pct"
+        },
+        "min_lead_time_days": {
+          "minimum": 0,
+          "title": "Min Lead Time Days",
+          "type": "integer"
+        },
+        "max_rounds": {
+          "default": 2,
+          "description": "Hard cap per supplier (G2)",
+          "maximum": 2,
+          "minimum": 1,
+          "title": "Max Rounds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_discount_ask_pct",
+        "min_lead_time_days"
+      ],
+      "title": "NegotiationBoundaries",
+      "type": "object"
+    },
+    "ScoringWeights": {
+      "additionalProperties": false,
+      "properties": {
+        "price": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Price",
+          "type": "number"
+        },
+        "lead_time": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Lead Time",
+          "type": "number"
+        },
+        "reliability": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Reliability",
+          "type": "number"
+        },
+        "risk": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Risk",
+          "type": "number"
+        }
+      },
+      "required": [
+        "price",
+        "lead_time",
+        "reliability",
+        "risk"
+      ],
+      "title": "ScoringWeights",
+      "type": "object"
+    },
+    "Thresholds": {
+      "additionalProperties": false,
+      "properties": {
+        "max_defect_rate": {
+          "default": 0.05,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Max Defect Rate",
+          "type": "number"
+        },
+        "min_confidence": {
+          "default": 0.85,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Min Confidence",
+          "type": "number"
+        },
+        "tie_margin": {
+          "default": 2.0,
+          "description": "Top-2 score gap that triggers escalation",
+          "minimum": 0,
+          "title": "Tie Margin",
+          "type": "number"
+        }
+      },
+      "title": "Thresholds",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "weights": {
+      "$ref": "#/$defs/ScoringWeights"
+    },
+    "thresholds": {
+      "$ref": "#/$defs/Thresholds",
+      "default": {
+        "max_defect_rate": 0.05,
+        "min_confidence": 0.85,
+        "tie_margin": 2.0
+      }
+    },
+    "negotiation": {
+      "$ref": "#/$defs/NegotiationBoundaries"
+    },
+    "approvals": {
+      "$ref": "#/$defs/ApprovalRequirements",
+      "default": {
+        "negotiation_send": true,
+        "po_generation": true
+      }
+    },
+    "tax_rate_pct": {
+      "anyOf": [
+        {
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "default": "0",
+      "title": "Tax Rate Pct"
+    }
+  },
+  "required": [
+    "weights",
+    "negotiation"
+  ],
+  "title": "ProcurementConfig",
+  "type": "object"
+}

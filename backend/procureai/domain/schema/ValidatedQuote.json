@@ -1,0 +1,288 @@
+{
+  "$defs": {
+    "QuoteChecks": {
+      "additionalProperties": false,
+      "properties": {
+        "moq_ok": {
+          "title": "Moq Ok",
+          "type": "boolean"
+        },
+        "lead_time_ok": {
+          "title": "Lead Time Ok",
+          "type": "boolean"
+        },
+        "budget_ok": {
+          "title": "Budget Ok",
+          "type": "boolean"
+        },
+        "math_ok": {
+          "title": "Math Ok",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "moq_ok",
+        "lead_time_ok",
+        "budget_ok",
+        "math_ok"
+      ],
+      "title": "QuoteChecks",
+      "type": "object"
+    },
+    "QuoteSource": {
+      "enum": [
+        "pdf",
+        "xlsx",
+        "email"
+      ],
+      "title": "QuoteSource",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "NormalizedQuote plus engine-computed costs and checks.",
+  "properties": {
+    "quote_id": {
+      "title": "Quote Id",
+      "type": "string"
+    },
+    "supplier_id": {
+      "title": "Supplier Id",
+      "type": "string"
+    },
+    "supplier_name": {
+      "title": "Supplier Name",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/QuoteSource"
+    },
+    "unit_price": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Unit Price"
+    },
+    "currency": {
+      "description": "ISO-4217 code",
+      "pattern": "^[A-Z]{3}$",
+      "title": "Currency",
+      "type": "string"
+    },
+    "quantity_quoted": {
+      "exclusiveMinimum": 0,
+      "title": "Quantity Quoted",
+      "type": "integer"
+    },
+    "moq": {
+      "minimum": 0,
+      "title": "Moq",
+      "type": "integer"
+    },
+    "lead_time_days": {
+      "minimum": 0,
+      "title": "Lead Time Days",
+      "type": "integer"
+    },
+    "payment_terms": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Payment Terms"
+    },
+    "shipping_cost": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "default": "0",
+      "title": "Shipping Cost"
+    },
+    "discount_pct": {
+      "anyOf": [
+        {
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "default": "0",
+      "title": "Discount Pct"
+    },
+    "validity_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Validity Date"
+    },
+    "capacity_units": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Capacity Units"
+    },
+    "llm_stated_total": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Total as written in the document; only used for mismatch detection (G1)",
+      "title": "Llm Stated Total"
+    },
+    "field_confidence": {
+      "additionalProperties": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+      },
+      "title": "Field Confidence",
+      "type": "object"
+    },
+    "raw_excerpt": {
+      "default": "",
+      "title": "Raw Excerpt",
+      "type": "string"
+    },
+    "subtotal": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Subtotal"
+    },
+    "discount": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Discount"
+    },
+    "shipping": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Shipping"
+    },
+    "tax": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Tax"
+    },
+    "landed_cost": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+          "type": "string"
+        }
+      ],
+      "title": "Landed Cost"
+    },
+    "checks": {
+      "$ref": "#/$defs/QuoteChecks"
+    },
+    "issues": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Issues",
+      "type": "array"
+    }
+  },
+  "required": [
+    "quote_id",
+    "supplier_id",
+    "supplier_name",
+    "source",
+    "unit_price",
+    "currency",
+    "quantity_quoted",
+    "moq",
+    "lead_time_days",
+    "subtotal",
+    "discount",
+    "shipping",
+    "tax",
+    "landed_cost",
+    "checks"
+  ],
+  "title": "ValidatedQuote",
+  "type": "object"
+}

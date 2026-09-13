@@ -1,0 +1,202 @@
+{
+  "$defs": {
+    "PurchaseOrderLine": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "quantity": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity",
+          "type": "integer"
+        },
+        "unit_price": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        },
+        "line_total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Line Total"
+        }
+      },
+      "required": [
+        "description",
+        "quantity",
+        "unit_price",
+        "line_total"
+      ],
+      "title": "PurchaseOrderLine",
+      "type": "object"
+    },
+    "PurchaseOrderTotals": {
+      "additionalProperties": false,
+      "properties": {
+        "subtotal": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Subtotal"
+        },
+        "discount": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Discount"
+        },
+        "shipping": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Shipping"
+        },
+        "tax": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Tax"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Total"
+        }
+      },
+      "required": [
+        "subtotal",
+        "discount",
+        "shipping",
+        "tax",
+        "total"
+      ],
+      "title": "PurchaseOrderTotals",
+      "type": "object"
+    },
+    "SupplierRef": {
+      "additionalProperties": false,
+      "properties": {
+        "supplier_id": {
+          "title": "Supplier Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "supplier_id",
+        "name"
+      ],
+      "title": "SupplierRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "po_number": {
+      "title": "Po Number",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "supplier": {
+      "$ref": "#/$defs/SupplierRef"
+    },
+    "currency": {
+      "description": "ISO-4217 code",
+      "pattern": "^[A-Z]{3}$",
+      "title": "Currency",
+      "type": "string"
+    },
+    "line_items": {
+      "items": {
+        "$ref": "#/$defs/PurchaseOrderLine"
+      },
+      "minItems": 1,
+      "title": "Line Items",
+      "type": "array"
+    },
+    "totals": {
+      "$ref": "#/$defs/PurchaseOrderTotals"
+    },
+    "approved_by": {
+      "title": "Approved By",
+      "type": "string"
+    },
+    "approved_at": {
+      "format": "date-time",
+      "title": "Approved At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "po_number",
+    "run_id",
+    "supplier",
+    "currency",
+    "line_items",
+    "totals",
+    "approved_by",
+    "approved_at"
+  ],
+  "title": "PurchaseOrder",
+  "type": "object"
+}

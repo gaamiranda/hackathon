@@ -1,0 +1,26 @@
+{
+  "po_number": "PO-2026-0001",
+  "run_id": "run-demo-001",
+  "supplier": {
+    "supplier_id": "sup-b",
+    "name": "Supplier B Manufacturing"
+  },
+  "currency": "USD",
+  "line_items": [
+    {
+      "description": "Product X",
+      "quantity": 2000,
+      "unit_price": "12.80",
+      "line_total": "25600.00"
+    }
+  ],
+  "totals": {
+    "subtotal": "25600.00",
+    "discount": "512.00",
+    "shipping": "250.00",
+    "tax": "2280.42",
+    "total": "27618.42"
+  },
+  "approved_by": "procurement.manager@example.com",
+  "approved_at": "2026-09-15T09:40:00Z"
+}

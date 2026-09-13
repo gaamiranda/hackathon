@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# Node
+node_modules/
+frontend/dist/
+*.log
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# LLM record/replay cache
+data/llm_cache/
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/

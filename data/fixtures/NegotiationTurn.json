@@ -1,0 +1,10 @@
+{
+  "role": "buyer",
+  "message": "Thank you for the quote on 2,000 units of Product X. Could you offer USD 12.40 per unit while keeping the 10-day lead time? We are ready to confirm promptly.",
+  "offer": {
+    "unit_price": "12.40",
+    "lead_time_days": 10
+  },
+  "approved_by_human": true,
+  "ts": "2026-09-15T09:20:00Z"
+}

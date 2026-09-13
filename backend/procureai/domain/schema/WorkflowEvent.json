@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "EventActor": {
+      "enum": [
+        "agent",
+        "engine",
+        "human",
+        "supplier"
+      ],
+      "title": "EventActor",
+      "type": "string"
+    },
+    "WorkflowState": {
+      "enum": [
+        "CREATED",
+        "EXTRACTING",
+        "NEEDS_HUMAN_EXTRACTION",
+        "VALIDATING",
+        "CALC_MISMATCH",
+        "ENRICHING",
+        "SCORING",
+        "RECOMMENDED",
+        "NEGOTIATION_DRAFTED",
+        "AWAITING_NEGOTIATION_APPROVAL",
+        "NEGOTIATING",
+        "COUNTER_RECEIVED",
+        "RE_SCORING",
+        "AWAITING_PO_APPROVAL",
+        "PO_GENERATED",
+        "REPLANNING"
+      ],
+      "title": "WorkflowState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "seq": {
+      "minimum": 0,
+      "title": "Seq",
+      "type": "integer"
+    },
+    "ts": {
+      "format": "date-time",
+      "title": "Ts",
+      "type": "string"
+    },
+    "actor": {
+      "$ref": "#/$defs/EventActor"
+    },
+    "type": {
+      "title": "Type",
+      "type": "string"
+    },
+    "state_before": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "state_after": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkflowState"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "seq",
+    "ts",
+    "actor",
+    "type",
+    "summary"
+  ],
+  "title": "WorkflowEvent",
+  "type": "object"
+}

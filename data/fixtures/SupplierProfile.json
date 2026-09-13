@@ -1,0 +1,11 @@
+{
+  "supplier_id": "sup-b",
+  "name": "Supplier B Manufacturing",
+  "on_time_rate": 0.98,
+  "defect_rate": 0.005,
+  "orders_completed": 42,
+  "avg_lead_time_days": 9,
+  "max_capacity_units": 4000,
+  "blacklisted": false,
+  "notes": "Excellent history; capacity capped at 4,000 units per order."
+}

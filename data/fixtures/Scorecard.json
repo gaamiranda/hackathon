@@ -1,0 +1,16 @@
+{
+  "supplier_id": "sup-b",
+  "landed_cost": "27618.42",
+  "lead_time_days": 10,
+  "reliability_score": 0.96,
+  "risk_score": 0.05,
+  "total_score": 87.4,
+  "score_breakdown": {
+    "price": 30.1,
+    "lead_time": 22.5,
+    "reliability": 24.0,
+    "risk": 10.8
+  },
+  "eligible": true,
+  "ineligibility_reasons": []
+}
