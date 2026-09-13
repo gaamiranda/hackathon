@@ -25,6 +25,18 @@ curl http://127.0.0.1:8000/health
 # {"mode":"mock","llm_gateway":"unknown","openclaw":"unknown"}
 ```
 
+## Week 1 demo over HTTP
+
+With the API running (mock mode, no network):
+
+```sh
+uv run python scripts/demo_week1.py          # create run → upload 3 docs → evaluate → confirm mismatch → recommendation
+curl -N localhost:8000/runs/<run_id>/events/stream            # live SSE event log (add ?follow=false to just replay)
+```
+
+Routes: see `procureai/api/routes_runs.py` (`POST /runs`, `POST /runs/{id}/documents`, `POST /runs/{id}/evaluate`,
+`POST /runs/{id}/quotes/{qid}/correct|confirm-math`, `GET /runs/{id}`, `GET /runs/{id}/events[/stream]`).
+
 ## Regenerate JSON schemas
 
 After any change to `procureai/domain/models.py`:
@@ -41,7 +53,10 @@ committed schemas drift from the models.
 
 ```
 procureai/
-  api/        FastAPI app (only /health for now)
+  api/        FastAPI app: routes_runs.py (REST + SSE), extract_text.py (pdf/xlsx/txt → text), deps.py
+  agents/     agent protocols + mock implementations
+  engine/     deterministic costing / scoring / policy / diff
+  workflow/   orchestrator (state machine), run store, event bus
   config/     pydantic-settings (MODE, LLM gateway, OpenClaw)
   domain/     contracts + exported JSON schemas
 scripts/      export_schemas.py

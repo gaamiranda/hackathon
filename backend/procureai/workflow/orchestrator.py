@@ -1,6 +1,6 @@
 """Week 1 straight-line pipeline (PLAN.md §2 state machine, §17 gates G1/G6).
 
-CREATED → EXTRACTING → [NEEDS_HUMAN_EXTRACTION] → VALIDATING → [CALC_MISMATCH]
+CREATED → EXTRACTING → [NEEDS_HUMAN_EXTRACTION] → EXTRACTED → VALIDATING → [CALC_MISMATCH]
         → ENRICHING → SCORING → RECOMMENDED
 
 The orchestrator owns state and calls agents/engine; it never does arithmetic.
@@ -69,11 +69,11 @@ class Orchestrator:
             return run
 
     def add_documents(self, run_id: str, docs: list[RawDocument]) -> Run:
-        """Extract every document. Ends in EXTRACTING (clean, ready for run_evaluation)
+        """Extract every document. Ends in EXTRACTED (clean, ready for run_evaluation)
         or NEEDS_HUMAN_EXTRACTION (low-confidence / missing critical fields, G6)."""
         with self.store.lock:
             run = self.store.get(run_id)
-            self._require(run, {S.CREATED, S.EXTRACTING}, "add_documents")
+            self._require(run, {S.CREATED, S.EXTRACTED}, "add_documents")
             if not docs:
                 raise WorkflowError("no_documents", "add_documents needs at least one document")
             run.documents.extend(docs)
@@ -82,7 +82,30 @@ class Orchestrator:
                              {"documents": [{"doc_id": d.doc_id, "filename": d.filename, "source": d.source} for d in docs]})
             for doc in docs:
                 self._extract(run, doc)
-            self._check_extraction(run)
+            self._finish_extraction(run)
+            return self._save(run)
+
+    def replace_document(self, run_id: str, doc_id: str, doc: RawDocument) -> Run:
+        """Re-upload one document (failed parse or bad extraction): drops the old document
+        and the quote extracted from it, extracts the new one, re-checks (D15)."""
+        with self.store.lock:
+            run = self.store.get(run_id)
+            self._require(run, {S.EXTRACTED, S.NEEDS_HUMAN_EXTRACTION}, "replace_document")
+            if not any(d.doc_id == doc_id for d in run.documents):
+                raise WorkflowError("document_not_found", f"unknown doc_id {doc_id!r} in run {run.run_id}")
+            old_quote_id = self._quote_id_for_document(run, doc_id)
+            run.documents = [d for d in run.documents if d.doc_id != doc_id]
+            run.quotes = [q for q in run.quotes if q.quote_id != old_quote_id]
+            if run.pending_human:
+                run.pending_human.details.get("failed_documents", {}).pop(doc_id, None)
+                run.pending_human.details.get("fields", {}).pop(old_quote_id, None)
+                if old_quote_id in run.pending_human.quote_ids:
+                    run.pending_human.quote_ids.remove(old_quote_id)
+            run.documents.append(doc)
+            self._emit(run, EventActor.HUMAN, "document.replaced", f"Document {doc_id} replaced by {doc.doc_id} ({doc.filename})",
+                       {"old_doc_id": doc_id, "old_quote_id": old_quote_id, "doc_id": doc.doc_id, "filename": doc.filename})
+            self._extract(run, doc)
+            self._finish_extraction(run)
             return self._save(run)
 
     def correct_quote(self, run_id: str, quote_id: str, patch: dict[str, Any]) -> Run:
@@ -101,7 +124,7 @@ class Orchestrator:
             self._emit(run, EventActor.HUMAN, "quote.corrected", f"Human corrected {sorted(patch)} on {quote_id}",
                        {"quote_id": quote_id, "patch": patch, "quote": _json(run.quotes[idx])})
             if self._check_extraction(run):
-                self._transition(run, S.EXTRACTING, EventActor.HUMAN, "extraction.resumed",
+                self._transition(run, S.EXTRACTED, EventActor.HUMAN, "extraction.resumed",
                                  "All critical fields confirmed; resuming")
                 self._evaluate(run)
             return self._save(run)
@@ -110,7 +133,7 @@ class Orchestrator:
         """VALIDATING → (CALC_MISMATCH stop) → ENRICHING → SCORING → RECOMMENDED."""
         with self.store.lock:
             run = self.store.get(run_id)
-            self._require(run, {S.EXTRACTING}, "run_evaluation")
+            self._require(run, {S.EXTRACTED}, "run_evaluation")
             if not run.quotes:
                 raise WorkflowError("no_quotes", "run_evaluation needs extracted quotes; call add_documents first")
             if run.pending_human:
@@ -148,7 +171,7 @@ class Orchestrator:
             pending.details.pop(quote_id, None)
             if not pending.quote_ids:
                 run.pending_human = None
-                self._transition(run, S.EXTRACTING, EventActor.HUMAN, "mismatch.resolved",
+                self._transition(run, S.EXTRACTED, EventActor.HUMAN, "mismatch.resolved",
                                  "All calculation mismatches resolved; resuming")
                 self._evaluate(run)
             return self._save(run)
@@ -174,6 +197,20 @@ class Orchestrator:
                    else f"{quote.quote_id}: all critical fields confident",
                    {"doc_id": doc.doc_id, "quote_id": quote.quote_id, "supplier_id": quote.supplier_id,
                     "field_confidence": quote.field_confidence, "low_confidence_fields": low, "quote": _json(quote)})
+
+    def _finish_extraction(self, run: Run) -> None:
+        """EXTRACTING/NEEDS_HUMAN_EXTRACTION → EXTRACTED when every quote is clean."""
+        if self._check_extraction(run):
+            self._transition(run, S.EXTRACTED, EventActor.ENGINE, "extraction.completed",
+                             f"{len(run.quotes)} quote(s) extracted; ready for evaluation",
+                             {"quote_ids": [q.quote_id for q in run.quotes]})
+
+    def _quote_id_for_document(self, run: Run, doc_id: str) -> str | None:
+        """doc_id → quote_id via the audit log (the Run aggregate keeps no mapping)."""
+        for event in reversed(self.store.events(run.run_id)):
+            if event.type == "quote.extracted" and event.payload.get("doc_id") == doc_id:
+                return event.payload.get("quote_id")
+        return None
 
     def _low_confidence_fields(self, run: Run, quote: NormalizedQuote) -> list[str]:
         threshold = run.config.thresholds.min_confidence

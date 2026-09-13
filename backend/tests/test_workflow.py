@@ -52,7 +52,7 @@ def test_happy_path_b_and_c(orch, request_, config):
     run = orch.create_run(request_, config)
     assert run.state == S.CREATED
     run = orch.add_documents(run.run_id, [DOC_B, DOC_C])
-    assert run.state == S.EXTRACTING and run.pending_human is None
+    assert run.state == S.EXTRACTED and run.pending_human is None
     run = orch.run_evaluation(run.run_id)
 
     assert run.state == S.RECOMMENDED

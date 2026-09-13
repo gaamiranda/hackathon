@@ -939,6 +939,7 @@
       "enum": [
         "CREATED",
         "EXTRACTING",
+        "EXTRACTED",
         "NEEDS_HUMAN_EXTRACTION",
         "VALIDATING",
         "CALC_MISMATCH",

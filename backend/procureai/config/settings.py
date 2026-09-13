@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     OPENCLAW_GATEWAY_URL: str = ""
     OPENCLAW_TOKEN: str = ""
 
+    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+    MAX_DOCUMENT_CHARS: int = 6000  # gateway body limit headroom (PLAN.md §2)
+
 
 @lru_cache
 def get_settings() -> Settings:

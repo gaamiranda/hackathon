@@ -40,6 +40,7 @@ class QuoteSource(StrEnum):
 class WorkflowState(StrEnum):
     CREATED = "CREATED"
     EXTRACTING = "EXTRACTING"
+    EXTRACTED = "EXTRACTED"  # resting state: all documents extracted, nothing pending (D15)
     NEEDS_HUMAN_EXTRACTION = "NEEDS_HUMAN_EXTRACTION"
     VALIDATING = "VALIDATING"
     CALC_MISMATCH = "CALC_MISMATCH"
