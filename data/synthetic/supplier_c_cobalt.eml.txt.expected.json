@@ -1,0 +1,30 @@
+{
+  "quote_id": "CI-Q-7731",
+  "supplier_id": "sup_c",
+  "supplier_name": "Cobalt Industrial",
+  "source": "email",
+  "unit_price": "13.40",
+  "currency": "USD",
+  "quantity_quoted": 2000,
+  "moq": 1000,
+  "lead_time_days": 9,
+  "payment_terms": "50% upfront, 50% on delivery",
+  "shipping_cost": "0",
+  "discount_pct": "0",
+  "validity_date": "2026-10-15",
+  "capacity_units": 10000,
+  "llm_stated_total": "26800.00",
+  "field_confidence": {
+    "unit_price": 1.0,
+    "currency": 1.0,
+    "quantity_quoted": 1.0,
+    "moq": 1.0,
+    "lead_time_days": 1.0,
+    "payment_terms": 1.0,
+    "shipping_cost": 1.0,
+    "discount_pct": 1.0,
+    "validity_date": 1.0,
+    "capacity_units": 1.0
+  },
+  "raw_excerpt": ""
+}
