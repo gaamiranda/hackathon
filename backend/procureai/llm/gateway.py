@@ -33,9 +33,11 @@ class GatewayLLMClient:
         *,
         client: httpx.Client | None = None,
         sleep=time.sleep,
+        model: str | None = None,
     ) -> None:
         self.settings = settings
         self.sleep = sleep
+        self._model = model  # None → settings.LLM_MODEL; set for the LLM_MODEL_FAST client (D18)
         self._client = client or httpx.Client(
             base_url=settings.LLM_GATEWAY_URL.rstrip("/"),
             timeout=settings.LLM_TIMEOUT_S,
@@ -44,7 +46,7 @@ class GatewayLLMClient:
 
     @property
     def model(self) -> str:
-        return self.settings.LLM_MODEL
+        return self._model or self.settings.LLM_MODEL
 
     def complete(
         self,

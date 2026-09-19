@@ -41,10 +41,11 @@ EXPECTED_SUPPLIER = {
 }
 
 
-def recorded_model() -> str:
-    """The model the cache was recorded against; keeps the tests independent of anyone's .env."""
-    models = {json.loads(p.read_text())["request"]["model"] for p in CACHE_DIR.rglob("*.json")}
-    assert len(models) == 1, f"cache mixes models: {models}"
+def recorded_model(task: str = "extract") -> str:
+    """The model a task's cache was recorded against; keeps the tests independent of anyone's .env.
+    Per task because change explanations may run on LLM_MODEL_FAST (D18)."""
+    models = {json.loads(p.read_text())["request"]["model"] for p in (CACHE_DIR / task).glob("*.json")}
+    assert len(models) == 1, f"cache for {task} mixes models: {models}"
     return models.pop()
 
 

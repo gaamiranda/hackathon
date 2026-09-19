@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     LLM_GATEWAY_URL: str = ""
     LLM_GATEWAY_API_KEY: str = ""
     LLM_MODEL: str = "sonnet4.5:latest"
+    # Low-stakes text only (change explanations, D18); "" = same as LLM_MODEL. Not "haiku:latest" by default:
+    # the gateway refused it on 2026-09-19 ("Only the approved model is allowed" for claude-3-haiku).
+    LLM_MODEL_FAST: str = ""
     LLM_NUM_PREDICT: int = 2048
     # replay_or_record = spend a token only on a cache miss; replay_only = offline/CI (PLAN.md risk 2b)
     LLM_CACHE_MODE: Literal["replay_or_record", "record", "replay_only"] = "replay_or_record"

@@ -410,7 +410,9 @@ def test_po_gate_over_http(client):
     run = r.json()
     assert run["state"] == "PO_GENERATED" and run["po_preview"] is None and run["pending_human"] is None
     po = run["purchase_order"]
-    assert po["po_number"].startswith("PO-") and po["po_number"].endswith(run_id[:6]) and len(po["po_number"]) == 3 + 8 + 1 + 6
+    # D25: PO-<YYYYMMDD>-<the 8 hex chars of the run id after "run-">
+    assert po["po_number"].startswith("PO-") and po["po_number"].endswith(run_id.removeprefix("run-"))
+    assert len(po["po_number"]) == 3 + 8 + 1 + 8
     assert po["approved_by"] == "demo-user" and po["approved_at"]
     assert po["totals"] == preview["totals"] and po["line_items"] == preview["line_items"]
     assert client.get(f"/runs/{run_id}/po").json() == po

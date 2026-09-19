@@ -14,6 +14,7 @@ from procureai.domain.models import (
     ProcurementRequest,
     RawDocument,
     Scorecard,
+    ScoringWeights,
     SupplierProfile,
     ValidatedQuote,
 )
@@ -90,6 +91,10 @@ class MockDecisionAgent:
         scorecards: list[Scorecard],
         validated: list[ValidatedQuote],
         diff_lines: list[str] | None = None,
+        *,
+        profiles: dict[str, SupplierProfile] | None = None,  # unused: the template only repeats engine output
+        weights: ScoringWeights | None = None,
+        before: list[Scorecard] | None = None,
     ) -> Explanation:
         names = {vq.supplier_id: vq.supplier_name for vq in validated}
         eligible = [c for c in scorecards if c.eligible]

@@ -18,7 +18,7 @@ from tests.test_interrupt import negotiated_run
 from tests.test_negotiation import config, orch, recommended_run, request_  # noqa: F401
 
 BACKEND = Path(__file__).resolve().parents[1]
-PO_NUMBER = re.compile(r"^PO-\d{8}-.{6}$")
+PO_NUMBER = re.compile(r"^PO-\d{8}-[0-9a-f]{8}$")  # D25: date + the 8 hex chars of the run id
 # §15 after the interrupt: Cobalt 5,000 × 12.45 (negotiated), free shipping, no discount, 9 % tax.
 COBALT_V2 = {"subtotal": D("62250.00"), "discount": D("0.00"), "shipping": D("0.00"), "tax": D("5602.50"), "total": D("67852.50")}
 
@@ -75,7 +75,7 @@ def test_approve_po_generates_numbered_po_and_is_terminal(orch, request_, config
     assert run.state == S.PO_GENERATED and run.pending_human is None and run.po_preview is None
     po = run.purchase_order
     assert PO_NUMBER.match(po.po_number), po.po_number
-    assert po.po_number == f"PO-{po.approved_at:%Y%m%d}-{run_id[:6]}"
+    assert po.po_number == f"PO-{po.approved_at:%Y%m%d}-{run_id.removeprefix('run-')}"
     assert po.approved_by == "demo-user" and po.approved_at is not None
     assert po.supplier.supplier_id == "sup_c" and po.line_items[0].unit_price == D("12.45")
     assert po.totals.total == D("67852.50") and po.request_version == 2

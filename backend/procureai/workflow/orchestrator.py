@@ -421,7 +421,7 @@ class Orchestrator:
                                     "request the purchase order again")
             ts = self.now()
             po = fresh.model_copy(update={
-                "po_number": f"PO-{ts:%Y%m%d}-{run.run_id[:6]}", "approved_by": approved_by.strip(), "approved_at": ts})
+                "po_number": f"PO-{ts:%Y%m%d}-{run.run_id.removeprefix('run-')[:8]}", "approved_by": approved_by.strip(), "approved_at": ts})
             run.purchase_order, run.po_preview, run.pending_human = po, None, None
             self._transition(run, S.PO_GENERATED, EventActor.HUMAN, "po.generated",
                              f"{po.po_number} generated for {po.supplier.name}: {po.line_items[0].quantity:,} × "
@@ -834,7 +834,8 @@ class Orchestrator:
         if replan is not None:  # lead the change explanation with what the human changed
             diff_lines = [self._changes_line(replan)] + (diff_lines or [])
         self._agent_started(run, "decision", "Explaining the ranking" + (" and what changed" if diff_lines else ""))
-        explanation = self.agents["decision"].explain(run.request, run.scorecards, run.validated, diff_lines)
+        explanation = self.agents["decision"].explain(run.request, run.scorecards, run.validated, diff_lines,
+                                                      profiles=profiles, weights=run.config.weights, before=before)
         run.recommendation = Recommendation(
             run_id=run.run_id, request_version=run.request.version, ranked=ranked, recommended_supplier_id=top,
             rationale=explanation["rationale"], change_explanation=explanation["change_explanation"])

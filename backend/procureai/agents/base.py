@@ -10,6 +10,7 @@ from procureai.domain.models import (
     ProcurementRequest,
     RawDocument,
     Scorecard,
+    ScoringWeights,
     SupplierProfile,
     ValidatedQuote,
 )
@@ -57,12 +58,18 @@ class DecisionAgent(Protocol):
         scorecards: list[Scorecard],
         validated: list[ValidatedQuote],
         diff_lines: list[str] | None = None,
+        *,
+        profiles: dict[str, SupplierProfile] | None = None,
+        weights: ScoringWeights | None = None,
+        before: list[Scorecard] | None = None,
     ) -> Explanation:
         """Explain an already-ranked result in plain language.
 
         Scores and ranking come from the engine and must be repeated, not changed.
         `diff_lines` (from engine.explain_diff) are present after a replan / re-score
-        and should be summarised into `change_explanation`.
+        and should be summarised into `change_explanation`. The keyword-only context
+        (T7, additive) lets a live agent quote history and weights and give exact
+        before/after figures; `before` holds the pre-change scorecards when diff_lines is set.
         """
         ...
 
