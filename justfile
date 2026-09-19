@@ -39,6 +39,14 @@ regen:
     cd backend && uv run python scripts/export_schemas.py
     cd backend && uv run python scripts/generate_synthetic_quotes.py
 
+# Probe the organiser LLM gateway (LIVE: ~2 calls on the shared credit). Findings: docs/INFRA.md
+probe-llm:
+    cd backend && uv run python scripts/probe_gateway.py
+
+# Replay the three recorded quote extractions from data/llm_cache/ (free); --record re-runs them live
+extractions *ARGS:
+    cd backend && uv run python scripts/record_extractions.py {{ ARGS }}
+
 # Week 1 demo over HTTP against a running backend
 demo:
     cd backend && uv run python scripts/demo_week1.py

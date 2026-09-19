@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     LLM_GATEWAY_API_KEY: str = ""
     LLM_MODEL: str = "sonnet4.5:latest"
     LLM_NUM_PREDICT: int = 2048
+    # replay_or_record = spend a token only on a cache miss; replay_only = offline/CI (PLAN.md risk 2b)
+    LLM_CACHE_MODE: Literal["replay_or_record", "record", "replay_only"] = "replay_or_record"
+    LLM_TIMEOUT_S: float = 60
+    LLM_MAX_BODY_BYTES: int = 7000  # WAF rejects ~8 KiB; headroom for the JSON envelope (docs/INFRA.md)
 
     OPENCLAW_GATEWAY_URL: str = ""
     OPENCLAW_TOKEN: str = ""

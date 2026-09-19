@@ -19,8 +19,8 @@ frontend/dist/
 .env.*
 !.env.example
 
-# LLM record/replay cache
-data/llm_cache/
+# LLM record/replay cache is COMMITTED on purpose: tests and demos replay it instead of
+# spending the shared token credit (PLAN.md risk 2b).
 
 # macOS
 .DS_Store
