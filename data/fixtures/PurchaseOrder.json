@@ -1,6 +1,7 @@
 {
   "po_number": "PO-2026-0001",
   "run_id": "run-demo-001",
+  "request_version": 1,
   "supplier": {
     "supplier_id": "sup_b",
     "name": "Borealis Manufacturing AS"
@@ -21,6 +22,9 @@
     "tax": "2280.42",
     "total": "27618.42"
   },
+  "lead_time_days": 10,
+  "payment_terms": "Net 30",
+  "negotiated": false,
   "approved_by": "procurement.manager@example.com",
   "approved_at": "2026-09-15T09:40:00Z"
 }

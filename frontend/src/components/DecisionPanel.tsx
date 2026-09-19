@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { NegotiationOffer, NegotiationStatus, NegotiationThread, NegotiationTurn, ReplanImpact, Run, Scorecard, WorkflowEvent } from '../api/types'
+import type { NegotiationOffer, NegotiationStatus, NegotiationThread, NegotiationTurn, PurchaseOrder, ReplanImpact, Run, Scorecard, WorkflowEvent } from '../api/types'
 import { money, time } from '../format'
 import { Button, ErrorLine, Panel } from './Panel'
 
@@ -17,8 +17,11 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
   const quotes = Object.fromEntries(run.quotes.map((q) => [q.supplier_id, q]))
   const rec = run.recommendation
   const threads = Object.values(run.negotiations)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<'negotiate' | 'request-po' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const generated = run.state === 'PO_GENERATED'
+  const topCard = rec?.recommended_supplier_id ? run.scorecards.find((c) => c.supplier_id === rec.recommended_supplier_id) : undefined
+  const canRequestPo = run.state === 'RECOMMENDED' && !!topCard?.eligible && run.config.approvals.po_generation
 
   // Scorecards from the previous scoring pass (quotes.scored events) → before/after under "What changed".
   const previous = useMemo(() => {
@@ -27,20 +30,21 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
     return Object.fromEntries((scored[scored.length - 2].payload.scorecards as Scorecard[]).map((c) => [c.supplier_id, c]))
   }, [events])
 
-  const startNegotiation = async () => {
-    setBusy(true)
+  const call = async (label: 'negotiate' | 'request-po', fn: () => Promise<Run>) => {
+    setBusy(label)
     setError(null)
     try {
-      onRun(await api.negotiate(run.run_id))
+      onRun(await fn())
     } catch (err) {
       setError((err as ApiError).message)
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
   return (
     <Panel title="Decision">
+      {generated && run.purchase_order && <PurchaseOrderCard po={run.purchase_order} runId={run.run_id} />}
       {run.replan_impact && <ReplanImpactCard impact={run.replan_impact} names={names} explanation={rec?.change_explanation ?? null} />}
 
       {run.scorecards.length === 0 ? (
@@ -144,6 +148,22 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
         </div>
       )}
 
+      {rec && canRequestPo && (
+        <div className="mt-4 rounded border border-emerald-800/70 bg-emerald-950/30 p-3 text-sm">
+          <h3 className="text-xs uppercase tracking-wider text-emerald-400">Purchase order</h3>
+          <p className="mt-1 text-zinc-400">
+            Raise a purchase order for {names[rec.recommended_supplier_id!] ?? rec.recommended_supplier_id} at the engine's landed cost{' '}
+            <span className="mono text-zinc-200">{money(topCard!.landed_cost, run.request.currency)}</span>. You will review the numbers and approve before anything is generated —
+            no agent can do this step.
+          </p>
+          <div className="mt-2">
+            <Button disabled={busy !== null} onClick={() => void call('request-po', () => api.requestPo(run.run_id))}>
+              {busy === 'request-po' ? 'Preparing…' : 'Request purchase order'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {rec && run.state === 'RECOMMENDED' && threads.length === 0 && (
         <div className="mt-4 rounded border border-zinc-800 bg-zinc-950/40 p-3 text-sm">
           <h3 className="text-xs uppercase tracking-wider text-zinc-500">Negotiation</h3>
@@ -152,13 +172,13 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
             {run.config.negotiation.max_rounds} rounds each. Nothing is sent without your approval.
           </p>
           <div className="mt-2">
-            <Button disabled={busy} onClick={() => void startNegotiation()}>
-              {busy ? 'Drafting…' : 'Start negotiation'}
+            <Button tone={canRequestPo ? 'ghost' : 'primary'} disabled={busy !== null} onClick={() => void call('negotiate', () => api.negotiate(run.run_id))}>
+              {busy === 'negotiate' ? 'Drafting…' : 'Start negotiation'}
             </Button>
           </div>
-          <ErrorLine error={error} />
         </div>
       )}
+      <ErrorLine error={error} />
 
       {threads.length > 0 && (
         <div className="mt-4 space-y-3">
@@ -169,6 +189,76 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
         </div>
       )}
     </Panel>
+  )
+}
+
+/** The generated purchase order (PO_GENERATED): every figure is the engine's; the document exists only because a
+ *  human clicked "Approve Final Supplier & Generate PO" (G5). */
+function PurchaseOrderCard({ po, runId }: { po: PurchaseOrder; runId: string }) {
+  const line = po.line_items[0]
+  const cur = po.currency
+  return (
+    <div className="mb-4 rounded border border-emerald-600 bg-emerald-950/40 p-3 text-sm ring-1 ring-emerald-500/40">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Purchase order generated</h3>
+        <span className="mono text-[10px] text-zinc-500">request v{po.request_version}</span>
+      </div>
+      <div className="mono mt-1 text-lg font-semibold text-emerald-100">{po.po_number}</div>
+      <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs">
+        <dt className="text-zinc-500">Supplier</dt>
+        <dd className="text-zinc-100">
+          {po.supplier.name} <span className="mono text-zinc-500">{po.supplier.supplier_id}</span>
+        </dd>
+        <dt className="text-zinc-500">Line</dt>
+        <dd className="mono text-zinc-100">
+          {line.quantity.toLocaleString()} × {line.description} @ {line.unit_price} {cur}
+          {po.negotiated && <span className="ml-1.5 rounded bg-amber-900/60 px-1 py-0.5 text-[10px] text-amber-200">negotiated</span>}
+        </dd>
+        <dt className="text-zinc-500">Lead time</dt>
+        <dd className="mono text-zinc-100">{po.lead_time_days} d</dd>
+        {po.payment_terms && (
+          <>
+            <dt className="text-zinc-500">Payment</dt>
+            <dd className="text-zinc-100">{po.payment_terms}</dd>
+          </>
+        )}
+      </dl>
+      <TotalsTable totals={po.totals} currency={cur} />
+      <p className="mono mt-2 text-[11px] text-emerald-300/90">
+        ✓ approved by {po.approved_by} at {po.approved_at ? time(po.approved_at) : '—'}
+      </p>
+      <a
+        href={api.poPdfUrl(runId)}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-2 inline-block rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
+      >
+        Download PO (PDF)
+      </a>
+    </div>
+  )
+}
+
+/** Engine totals block shared by the PO gate and the PO card. */
+export function TotalsTable({ totals, currency }: { totals: PurchaseOrder['totals']; currency: string }) {
+  const rows: [string, string, boolean][] = [
+    ['Subtotal', totals.subtotal, false],
+    ['Discount', totals.discount, false],
+    ['Shipping', totals.shipping, false],
+    ['Tax', totals.tax, false],
+    ['Total (landed cost)', totals.total, true],
+  ]
+  return (
+    <table className="mono mt-2 w-full text-xs">
+      <tbody>
+        {rows.map(([label, value, total]) => (
+          <tr key={label} className={total ? 'border-t border-emerald-700 font-semibold text-emerald-100' : 'text-zinc-300'}>
+            <td className="py-0.5 text-zinc-500">{total ? <span className="text-emerald-200">{label}</span> : label}</td>
+            <td className="py-0.5 text-right">{total ? money(value, currency) : money(value)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

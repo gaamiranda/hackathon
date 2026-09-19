@@ -350,14 +350,23 @@ class PurchaseOrderTotals(StrictModel):
 
 
 class PurchaseOrder(StrictModel):
-    po_number: str
+    """Built only by the orchestrator's request_po (preview) / approve_po (final) path (G5).
+
+    A preview (Run.po_preview) has po_number, approved_by and approved_at = None; the final
+    document (Run.purchase_order) has all three set. No agent or tool constructs this model."""
+
+    po_number: str | None = Field(default=None, description="None on the preview; assigned at human approval")
     run_id: str
+    request_version: int = Field(ge=1, description="Request version the totals were costed at")
     supplier: SupplierRef
     currency: Currency
     line_items: list[PurchaseOrderLine] = Field(min_length=1)
     totals: PurchaseOrderTotals
-    approved_by: str
-    approved_at: datetime
+    lead_time_days: int = Field(ge=0, description="Effective (negotiated if any) lead time")
+    payment_terms: str | None = Field(default=None, description="As stated on the supplier's quote")
+    negotiated: bool = Field(default=False, description="True when unit price / lead time come from an accepted counter-offer")
+    approved_by: str | None = Field(default=None, description="None on the preview")
+    approved_at: datetime | None = Field(default=None, description="None on the preview")
 
 
 # --------------------------------------------------------------------------- #
@@ -369,6 +378,7 @@ class PendingHumanKind(StrEnum):
     EXTRACTION = "extraction"  # low-confidence / missing critical fields
     CALC_MISMATCH = "calc_mismatch"  # stated total != computed total (G1)
     NEGOTIATION_APPROVAL = "negotiation_approval"  # outbound negotiation draft awaiting a human (G5)
+    PO_APPROVAL = "po_approval"  # final supplier + purchase order awaiting a human (G5)
 
 
 class PendingHuman(StrictModel):
@@ -394,6 +404,8 @@ class Run(StrictModel):
         default_factory=list, description="Previous request versions, oldest first (one per interrupt, D22)"
     )
     replan_impact: ReplanImpact | None = Field(default=None, description="Diff of the last replan; None before any interrupt")
+    po_preview: PurchaseOrder | None = Field(default=None, description="Unnumbered PO awaiting approval (AWAITING_PO_APPROVAL only)")
+    purchase_order: PurchaseOrder | None = Field(default=None, description="Final PO; set only by approve_po (PO_GENERATED)")
     created_at: datetime
     updated_at: datetime
 

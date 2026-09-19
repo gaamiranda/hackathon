@@ -190,7 +190,7 @@ export interface ReplanImpact {
   summary_lines: string[]
 }
 
-export type PendingHumanKind = 'extraction' | 'calc_mismatch' | 'negotiation_approval'
+export type PendingHumanKind = 'extraction' | 'calc_mismatch' | 'negotiation_approval' | 'po_approval'
 
 export interface CalcMismatchDetail {
   supplier_id: string
@@ -207,14 +207,62 @@ export interface NegotiationApprovalDetail {
   boundaries: NegotiationBoundaries
 }
 
+/** pending_human.details for kind "po_approval" (G5: the final gate before a purchase order exists). */
+export interface PoApprovalDetail {
+  supplier_id: string
+  supplier_name: string
+  totals: PurchaseOrderTotals
+  unit_price: Money
+  lead_time_days: number
+  negotiated: boolean
+  request_version: number
+}
+
 export interface PendingHuman {
   kind: PendingHumanKind
   quote_ids: string[]
   message: string
   /** calc_mismatch:         { [quote_id]: CalcMismatchDetail }
    *  extraction:            { fields: { [quote_id]: string[] }, failed_documents: { [doc_id]: string } }
-   *  negotiation_approval:  NegotiationApprovalDetail */
+   *  negotiation_approval:  NegotiationApprovalDetail
+   *  po_approval:           PoApprovalDetail */
   details: Record<string, unknown>
+}
+
+export interface SupplierRef {
+  supplier_id: string
+  name: string
+}
+
+export interface PurchaseOrderLine {
+  description: string
+  quantity: number
+  unit_price: Money
+  line_total: Money
+}
+
+export interface PurchaseOrderTotals {
+  subtotal: Money
+  discount: Money
+  shipping: Money
+  tax: Money
+  total: Money
+}
+
+/** Built only by the backend's request_po (preview: po_number/approved_* null) and approve_po (final) path. */
+export interface PurchaseOrder {
+  po_number: string | null
+  run_id: string
+  request_version: number
+  supplier: SupplierRef
+  currency: string
+  line_items: PurchaseOrderLine[]
+  totals: PurchaseOrderTotals
+  lead_time_days: number
+  payment_terms: string | null
+  negotiated: boolean
+  approved_by: string | null
+  approved_at: string | null
 }
 
 /** 422 body of POST /runs/{id}/negotiation/{sid}/approve when an edited message fails the outbound filter (G3). */
@@ -241,6 +289,10 @@ export interface Run {
   request_history: ProcurementRequest[]
   /** Diff of the last replan; null before any interrupt. */
   replan_impact: ReplanImpact | null
+  /** Unnumbered PO awaiting approval (AWAITING_PO_APPROVAL only). */
+  po_preview: PurchaseOrder | null
+  /** Final PO; set only by approve-po (PO_GENERATED). */
+  purchase_order: PurchaseOrder | null
   created_at: string
   updated_at: string
 }

@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from procureai.api.deps import get_orchestrator, get_shutdown_event
@@ -21,10 +21,12 @@ from procureai.domain.models import (
     NegotiationThread,
     ProcurementConfig,
     ProcurementRequest,
+    PurchaseOrder,
     RawDocument,
     Run,
     WorkflowEvent,
 )
+from procureai.po import render_po_pdf
 from procureai.workflow import Orchestrator, WorkflowError
 
 router = APIRouter(prefix="/runs", tags=["runs"])
@@ -86,6 +88,14 @@ class InterruptBody(BaseModel):
     quantity: int | None = Field(default=None, gt=0)
     budget: Money | None = None
     required_by: date | None = None
+    reason: str = ""
+
+
+class ApprovePoBody(BaseModel):
+    approved_by: str = Field(min_length=1, description="Name of the person approving the final supplier (G5)")
+
+
+class RejectPoBody(BaseModel):
     reason: str = ""
 
 
@@ -231,6 +241,49 @@ def interrupt(run_id: str, body: InterruptBody, orch: Orchestrator = Depends(get
     409 no_change when nothing differs."""
     return orch.interrupt(run_id, quantity=body.quantity, budget=body.budget, required_by=body.required_by,
                           reason=body.reason)
+
+
+@router.post("/{run_id}/request-po", response_model=Run)
+def request_po(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> Run:
+    """RECOMMENDED → AWAITING_PO_APPROVAL with run.po_preview (409 no_recommendation | supplier_ineligible)."""
+    return orch.request_po(run_id)
+
+
+@router.post("/{run_id}/approve-po", response_model=Run)
+def approve_po(run_id: str, body: ApprovePoBody, orch: Orchestrator = Depends(get_orchestrator)) -> Run:
+    """Human gate G5: AWAITING_PO_APPROVAL → PO_GENERATED with run.purchase_order (409 totals_changed if the
+    engine's figures moved since the preview). The only path that creates a purchase order."""
+    return orch.approve_po(run_id, body.approved_by)
+
+
+@router.post("/{run_id}/reject-po", response_model=Run)
+def reject_po(run_id: str, body: RejectPoBody | None = None, orch: Orchestrator = Depends(get_orchestrator)) -> Run:
+    """AWAITING_PO_APPROVAL → RECOMMENDED; the preview is dropped."""
+    return orch.reject_po(run_id, body.reason if body else "")
+
+
+def _purchase_order(orch: Orchestrator, run_id: str) -> PurchaseOrder:
+    po = orch.store.get(run_id).purchase_order
+    if po is None:
+        raise WorkflowError("po_not_found", f"run {run_id!r} has no generated purchase order yet")
+    return po
+
+
+@router.get("/{run_id}/po", response_model=PurchaseOrder)
+def get_po(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> PurchaseOrder:
+    """The generated purchase order; 404 until approve_po has run."""
+    return _purchase_order(orch, run_id)
+
+
+@router.get("/{run_id}/po.pdf", response_class=Response, responses={200: {"content": {"application/pdf": {}}}})
+def get_po_pdf(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> Response:
+    """The generated purchase order as a one-page PDF; 404 until approve_po has run."""
+    run = orch.store.get(run_id)
+    po = _purchase_order(orch, run_id)
+    profile = orch.agents["supplier_intel"].get_profile(po.supplier.supplier_id)
+    pdf = render_po_pdf(po, run.request, profile)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{po.po_number}.pdf"'})
 
 
 @router.get("/{run_id}/negotiations", response_model=dict[str, NegotiationThread])

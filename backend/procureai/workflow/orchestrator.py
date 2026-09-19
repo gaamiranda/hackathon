@@ -5,10 +5,15 @@ CREATED → EXTRACTING → [NEEDS_HUMAN_EXTRACTION] → EXTRACTED → VALIDATING
         → (per supplier, top negotiate_top_n, sequentially; ≤ max_rounds buyer turns each)
           NEGOTIATION_DRAFTED → AWAITING_NEGOTIATION_APPROVAL → NEGOTIATING → COUNTER_RECEIVED
         → RE_SCORING → RECOMMENDED
-RECOMMENDED | EXTRACTED | AWAITING_NEGOTIATION_APPROVAL → (interrupt, D22) REPLANNING → VALIDATING → … → RECOMMENDED
+RECOMMENDED → (request_po) AWAITING_PO_APPROVAL → (approve_po, human) PO_GENERATED  [terminal]
+                                              → (reject_po, human) RECOMMENDED
+RECOMMENDED | EXTRACTED | AWAITING_NEGOTIATION_APPROVAL | AWAITING_PO_APPROVAL
+        → (interrupt, D22) REPLANNING → VALIDATING → … → RECOMMENDED
 
 The orchestrator owns state and calls agents/engine; it never does arithmetic. Negotiation
 guardrails live here, not in the agent: the round limit (G2) and the outbound leakage filter (G3).
+The PurchaseOrder is constructed only in request_po (preview) and approve_po (final); no agent
+tool reaches either (G5).
 """
 
 from collections.abc import Callable
@@ -33,6 +38,9 @@ from procureai.domain.models import (
     PendingHumanKind,
     ProcurementConfig,
     ProcurementRequest,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseOrderTotals,
     RawDocument,
     Recommendation,
     ReplanImpact,
@@ -40,6 +48,8 @@ from procureai.domain.models import (
     Scorecard,
     SupplierImpact,
     SupplierProfile,
+    SupplierRef,
+    ValidatedQuote,
     WorkflowState,
 )
 from procureai.engine import (
@@ -312,7 +322,8 @@ class Orchestrator:
         Nothing eligible afterwards is an escalation for the human, not an error."""
         with self.store.lock:
             run = self.store.get(run_id)
-            self._require(run, {S.RECOMMENDED, S.EXTRACTED, S.AWAITING_NEGOTIATION_APPROVAL}, "interrupt")
+            self._require(run, {S.RECOMMENDED, S.EXTRACTED, S.AWAITING_NEGOTIATION_APPROVAL, S.AWAITING_PO_APPROVAL},
+                          "interrupt")
             old = run.request
             if budget is not None:
                 budget = Decimal(budget).quantize(Decimal("0.01"))
@@ -335,6 +346,8 @@ class Orchestrator:
             pending = run.pending_human
             if pending is not None and pending.kind == PendingHumanKind.NEGOTIATION_APPROVAL:
                 self._discard_draft(run, pending)
+            elif pending is not None and pending.kind == PendingHumanKind.PO_APPROVAL:
+                self._discard_po_preview(run)
 
             self._replans[run.run_id] = _Replan(
                 from_version=old.version, to_version=run.request.version, changes=changes,
@@ -350,6 +363,116 @@ class Orchestrator:
                               "negotiated": [q.supplier_id for q in run.quotes if q.negotiated_offer]})
             self._evaluate(run)
             return self._save(run)
+
+    def request_po(self, run_id: str) -> Run:
+        """RECOMMENDED → AWAITING_PO_APPROVAL with an unnumbered PO preview for the recommended supplier,
+        costed by the engine at the current request version with the effective (negotiated) terms.
+        The final document exists only after approve_po (G5); config.approvals.po_generation must be on."""
+        with self.store.lock:
+            run = self.store.get(run_id)
+            self._require(run, {S.RECOMMENDED}, "request_po")
+            if not run.config.approvals.po_generation:
+                raise WorkflowError("approval_required", "PO generation without a human approval gate is not supported (G5)")
+            sid = run.recommendation.recommended_supplier_id if run.recommendation else None
+            if sid is None:
+                raise WorkflowError("no_recommendation", "no recommended supplier to raise a purchase order for")
+            if run.recommendation.request_version != run.request.version:
+                raise WorkflowError("stale_recommendation",
+                                    f"recommendation is for request v{run.recommendation.request_version}, current is v{run.request.version}")
+            card = next((c for c in run.scorecards if c.supplier_id == sid), None)
+            if card is None or not card.eligible:
+                reasons = "; ".join(card.ineligibility_reasons) if card else "not scored"
+                raise WorkflowError("supplier_ineligible", f"{sid} is not eligible: {reasons}")
+            validated = next((v for v in run.validated if v.supplier_id == sid), None)
+            if validated is None:
+                raise WorkflowError("quote_not_found", f"no validated quote from {sid!r} in run {run.run_id}")
+
+            run.po_preview = self._build_po(run, validated)
+            run.pending_human = PendingHuman(
+                kind=PendingHumanKind.PO_APPROVAL, quote_ids=[validated.quote_id],
+                message=f"Approve {validated.supplier_name} as final supplier and generate the purchase order",
+                details={"supplier_id": sid, "supplier_name": validated.supplier_name,
+                         "totals": _json(run.po_preview.totals), "unit_price": str(effective_unit_price(validated)),
+                         "lead_time_days": effective_lead_time_days(validated), "negotiated": validated.negotiated,
+                         "request_version": run.request.version})
+            self._transition(run, S.AWAITING_PO_APPROVAL, EventActor.ENGINE, "po.requested",
+                             f"Purchase order for {run.request.quantity:,} × {run.request.product} from {validated.supplier_name} "
+                             f"at {effective_unit_price(validated)}/unit ({run.po_preview.totals.total} {run.po_preview.currency} landed) "
+                             "awaits human approval",
+                             {"po_preview": _json(run.po_preview), "pending_human": _json(run.pending_human)})
+            return self._save(run)
+
+    def approve_po(self, run_id: str, approved_by: str) -> Run:
+        """Human gate G5: AWAITING_PO_APPROVAL → PO_GENERATED (terminal). The totals are re-derived from the
+        engine at approval time and must equal the preview the human saw (totals_changed otherwise)."""
+        with self.store.lock:
+            run = self.store.get(run_id)
+            self._require(run, {S.AWAITING_PO_APPROVAL}, "approve_po")
+            if not approved_by or not approved_by.strip():
+                raise WorkflowError("approver_required", "approve_po needs the approver's name")
+            preview = run.po_preview
+            if preview is None or run.pending_human is None or run.pending_human.kind != PendingHumanKind.PO_APPROVAL:
+                raise WorkflowError("not_pending", "no purchase order awaiting approval")
+            quote = self._quote_for_supplier(run, preview.supplier.supplier_id)
+            fresh = self._build_po(run, self._recost(run, quote))
+            if fresh.totals != preview.totals or fresh.line_items != preview.line_items:
+                raise WorkflowError("totals_changed",
+                                    f"engine totals changed since the preview ({preview.totals.total} → {fresh.totals.total}); "
+                                    "request the purchase order again")
+            ts = self.now()
+            po = fresh.model_copy(update={
+                "po_number": f"PO-{ts:%Y%m%d}-{run.run_id[:6]}", "approved_by": approved_by.strip(), "approved_at": ts})
+            run.purchase_order, run.po_preview, run.pending_human = po, None, None
+            self._transition(run, S.PO_GENERATED, EventActor.HUMAN, "po.generated",
+                             f"{po.po_number} generated for {po.supplier.name}: {po.line_items[0].quantity:,} × "
+                             f"{po.line_items[0].unit_price}/unit, total {po.totals.total} {po.currency}; approved by {po.approved_by}",
+                             {"purchase_order": _json(po), "approved_by": po.approved_by})
+            return self._save(run)
+
+    def reject_po(self, run_id: str, reason: str = "") -> Run:
+        """Human declines the final supplier: AWAITING_PO_APPROVAL → RECOMMENDED, preview dropped.
+        Negotiation and interrupt remain available afterwards."""
+        with self.store.lock:
+            run = self.store.get(run_id)
+            self._require(run, {S.AWAITING_PO_APPROVAL}, "reject_po")
+            preview = run.po_preview
+            run.po_preview, run.pending_human = None, None
+            self._transition(run, S.RECOMMENDED, EventActor.HUMAN, "po.rejected",
+                             f"Purchase order for {preview.supplier.name if preview else 'the recommended supplier'} rejected by human"
+                             + (f": {reason}" if reason else ""),
+                             {"supplier_id": preview.supplier.supplier_id if preview else None, "reason": reason,
+                              "po_preview": _json(preview) if preview else None})
+            return self._save(run)
+
+    # ------------------------------------------------------------------ purchase order internals
+
+    def _build_po(self, run: Run, validated: ValidatedQuote) -> PurchaseOrder:
+        """The only constructor of PurchaseOrder (G5). Every number is the engine's; nothing is computed here."""
+        return PurchaseOrder(
+            run_id=run.run_id, request_version=run.request.version,
+            supplier=SupplierRef(supplier_id=validated.supplier_id, name=validated.supplier_name),
+            currency=validated.currency,
+            line_items=[PurchaseOrderLine(description=run.request.product, quantity=run.request.quantity,
+                                          unit_price=effective_unit_price(validated), line_total=validated.subtotal)],
+            totals=PurchaseOrderTotals(subtotal=validated.subtotal, discount=validated.discount, shipping=validated.shipping,
+                                       tax=validated.tax, total=validated.landed_cost),
+            lead_time_days=effective_lead_time_days(validated), payment_terms=validated.payment_terms,
+            negotiated=validated.negotiated)
+
+    def _recost(self, run: Run, quote: NormalizedQuote) -> ValidatedQuote:
+        """Engine costing of one quote at the current request (mismatches were resolved before RECOMMENDED)."""
+        result = self.engine(run.request, run.config, [quote], {}, include_math_mismatch=True)
+        return next(v for v in result.validated if v.quote_id == quote.quote_id)
+
+    def _discard_po_preview(self, run: Run) -> None:
+        """An interrupt while a PO awaits approval drops the unnumbered preview (nothing was generated, G5)."""
+        preview = run.po_preview
+        run.po_preview, run.pending_human = None, None
+        self._emit(run, EventActor.ENGINE, "po.discarded",
+                   f"Unapproved purchase order preview for {preview.supplier.name if preview else 'the recommended supplier'} "
+                   "discarded by the requirement change",
+                   {"supplier_id": preview.supplier.supplier_id if preview else None,
+                    "po_preview": _json(preview) if preview else None})
 
     # ------------------------------------------------------------------ replan internals
 

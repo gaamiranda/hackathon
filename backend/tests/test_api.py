@@ -368,3 +368,123 @@ def test_interrupt_without_budget_escalates(client):
     assert run["state"] == "RECOMMENDED" and run["recommendation"]["recommended_supplier_id"] is None
     assert run["recommendation"]["escalation"]["reason"] == "no_eligible_supplier"
     assert all(not c["eligible"] for c in run["scorecards"])
+
+
+# ----------------------------------------------------------------------------- PO gate (T15, G5)
+
+
+def replanned(client: TestClient) -> str:
+    """negotiated() plus the §15 interrupt: 5,000 units / 75,000 budget → Cobalt recommended."""
+    run_id = negotiated(client)
+    run = client.post(f"/runs/{run_id}/interrupt", json={"quantity": 5000, "budget": "75000"}).json()
+    assert run["state"] == "RECOMMENDED" and run["recommendation"]["recommended_supplier_id"] == "sup_c"
+    return run_id
+
+
+def test_po_gate_over_http(client):
+    run_id = replanned(client)
+    assert client.get(f"/runs/{run_id}/po").status_code == 404
+    assert client.get(f"/runs/{run_id}/po.pdf").status_code == 404
+
+    r = client.post(f"/runs/{run_id}/request-po")
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "AWAITING_PO_APPROVAL" and run["purchase_order"] is None
+    preview = run["po_preview"]
+    assert preview["po_number"] is None and preview["approved_by"] is None
+    assert preview["supplier"] == {"supplier_id": "sup_c", "name": "Cobalt Industrial"}
+    assert preview["line_items"] == [{"description": "Product X", "quantity": 5000, "unit_price": "12.45", "line_total": "62250.00"}]
+    assert preview["totals"] == {"subtotal": "62250.00", "discount": "0.00", "shipping": "0.00", "tax": "5602.50", "total": "67852.50"}
+    assert preview["negotiated"] is True and preview["lead_time_days"] == 9 and preview["request_version"] == 2
+    c = next(card for card in run["scorecards"] if card["supplier_id"] == "sup_c")
+    assert preview["totals"]["total"] == c["landed_cost"]
+    pending = run["pending_human"]
+    assert pending["kind"] == "po_approval"
+    assert pending["details"] == {"supplier_id": "sup_c", "supplier_name": "Cobalt Industrial", "totals": preview["totals"],
+                                  "unit_price": "12.45", "lead_time_days": 9, "negotiated": True, "request_version": 2}
+    assert client.get(f"/runs/{run_id}/po").status_code == 404  # preview is not a PO
+
+    assert client.post(f"/runs/{run_id}/approve-po", json={}).status_code == 422
+    r = client.post(f"/runs/{run_id}/approve-po", json={"approved_by": "demo-user"})
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "PO_GENERATED" and run["po_preview"] is None and run["pending_human"] is None
+    po = run["purchase_order"]
+    assert po["po_number"].startswith("PO-") and po["po_number"].endswith(run_id[:6]) and len(po["po_number"]) == 3 + 8 + 1 + 6
+    assert po["approved_by"] == "demo-user" and po["approved_at"]
+    assert po["totals"] == preview["totals"] and po["line_items"] == preview["line_items"]
+    assert client.get(f"/runs/{run_id}/po").json() == po
+
+    r = client.get(f"/runs/{run_id}/po.pdf")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF") and po["po_number"] in r.headers["content-disposition"]
+
+    events = client.get(f"/runs/{run_id}/events").json()
+    assert [e["type"] for e in events][-2:] == ["po.requested", "po.generated"]
+    generated = events[-1]
+    assert generated["actor"] == "human" and generated["state_after"] == "PO_GENERATED"
+    assert generated["payload"]["purchase_order"]["po_number"] == po["po_number"]
+    assert client.get("/runs").json()[-1]["state"] == "PO_GENERATED"
+
+    # terminal
+    for path, body in (("interrupt", {"quantity": 6000}), ("negotiate", None), ("request-po", None),
+                       ("approve-po", {"approved_by": "x"}), ("reject-po", {"reason": "late"}), ("evaluate", None)):
+        r = client.post(f"/runs/{run_id}/{path}", json=body)
+        assert r.status_code == 409 and r.json()["code"] == "illegal_transition", (path, r.text)
+    assert client.get(f"/runs/{run_id}").json()["state"] == "PO_GENERATED"
+
+
+def test_po_gate_errors_over_http(client):
+    assert client.post("/runs/run-nope/request-po").status_code == 404
+    assert client.get("/runs/run-nope/po").status_code == 404
+    run_id = replanned(client)
+    # approve straight from RECOMMENDED: no path around the gate
+    r = client.post(f"/runs/{run_id}/approve-po", json={"approved_by": "demo-user"})
+    assert r.status_code == 409 and r.json()["code"] == "illegal_transition"
+    assert client.get(f"/runs/{run_id}").json()["purchase_order"] is None
+
+    # ineligible recommendation (no budget increase → every supplier over budget)
+    run_id = negotiated(client)
+    run = client.post(f"/runs/{run_id}/interrupt", json={"quantity": 5000}).json()
+    assert run["recommendation"]["recommended_supplier_id"] is None
+    r = client.post(f"/runs/{run_id}/request-po")
+    assert r.status_code == 409 and r.json()["code"] == "no_recommendation"
+
+
+def test_reject_po_and_interrupt_from_po_gate_over_http(client):
+    run_id = replanned(client)
+    assert client.post(f"/runs/{run_id}/request-po").json()["state"] == "AWAITING_PO_APPROVAL"
+    r = client.post(f"/runs/{run_id}/reject-po", json={"reason": "Ask Apex first"})
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "RECOMMENDED" and run["po_preview"] is None and run["pending_human"] is None
+    rejected = client.get(f"/runs/{run_id}/events").json()[-1]
+    assert rejected["type"] == "po.rejected" and rejected["actor"] == "human" and rejected["payload"]["reason"] == "Ask Apex first"
+    # negotiation still callable afterwards (Apex has no thread yet)
+    run = client.post(f"/runs/{run_id}/negotiate").json()
+    assert run["state"] == "AWAITING_NEGOTIATION_APPROVAL" and run["pending_human"]["details"]["supplier_id"] == "sup_a"
+
+    run_id = replanned(client)
+    client.post(f"/runs/{run_id}/request-po")
+    since = client.get(f"/runs/{run_id}/events").json()[-1]["seq"]
+    run = client.post(f"/runs/{run_id}/interrupt", json={"quantity": 4000}).json()
+    assert run["state"] == "RECOMMENDED" and run["request"]["version"] == 3 and run["po_preview"] is None
+    types = [e["type"] for e in client.get(f"/runs/{run_id}/events", params={"since": since}).json()]
+    assert types[:3] == ["requirement.changed", "po.discarded", "replan.started"] and types[-1] == "replan.completed"
+
+
+def test_approve_po_totals_changed_over_http(client, monkeypatch):
+    run_id = replanned(client)
+    client.post(f"/runs/{run_id}/request-po")
+    orch = client.app.state.orchestrator
+    real = orch.engine
+
+    def drifted(*args, **kwargs):
+        result = real(*args, **kwargs)
+        return result.model_copy(update={"validated": [v.model_copy(update={"tax": v.tax + 1}) for v in result.validated]})
+
+    monkeypatch.setattr(orch, "engine", drifted)
+    r = client.post(f"/runs/{run_id}/approve-po", json={"approved_by": "demo-user"})
+    assert r.status_code == 409 and r.json()["code"] == "totals_changed"
+    assert client.get(f"/runs/{run_id}").json()["state"] == "AWAITING_PO_APPROVAL"
+    assert client.get(f"/runs/{run_id}/po").status_code == 404

@@ -37,10 +37,14 @@ curl -N localhost:8000/runs/<run_id>/events/stream            # live SSE event l
 Routes: see `procureai/api/routes_runs.py` (`POST /runs`, `POST /runs/{id}/documents`, `POST /runs/{id}/evaluate`,
 `POST /runs/{id}/quotes/{qid}/correct|confirm-math`, `POST /runs/{id}/negotiate`, `POST /runs/{id}/negotiation/{sid}/approve`,
 `POST /runs/{id}/interrupt` (Week 3: {quantity?, budget?, required_by?, reason?} → replan on the existing quotes),
+`POST /runs/{id}/request-po` (RECOMMENDED → AWAITING_PO_APPROVAL with `run.po_preview`), `POST /runs/{id}/approve-po`
+({approved_by} → PO_GENERATED, the only path that creates a PurchaseOrder, G5), `POST /runs/{id}/reject-po` ({reason}),
+`GET /runs/{id}/po` (JSON, 404 until generated), `GET /runs/{id}/po.pdf` (one-page PDF via reportlab, `procureai/po/render.py`),
 `GET /runs/{id}`, `GET /runs/{id}/events[/stream]`).
 
 Later weeks over HTTP: `uv run python scripts/demo_week2.py` (negotiation loop) and `scripts/demo_week3.py` (then the
-interrupt 2,000 → 5,000 / budget 75,000: prints the replan events, the impact table and the change explanation).
+interrupt 2,000 → 5,000 / budget 75,000: prints the replan events, the impact table and the change explanation; then
+request-po → approve-po as `demo-user` and writes the PDF to `backend/out/<po_number>.pdf`, git-ignored).
 
 ## Regenerate JSON schemas
 

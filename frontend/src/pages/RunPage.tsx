@@ -18,6 +18,10 @@ const REFETCH_ON = new Set([
   'negotiation.closed',
   'requirement.changed',
   'replan.completed',
+  'po.requested',
+  'po.generated',
+  'po.rejected',
+  'po.discarded',
 ])
 
 export function RunPage() {

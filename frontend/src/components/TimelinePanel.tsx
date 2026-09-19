@@ -62,6 +62,9 @@ function offerOf(payload: Record<string, unknown>): NegotiationOffer | null {
 /** Interrupt / replan events (T13, D22): the human's change and the engine's replan get a red accent. */
 const REPLAN_TYPES = new Set(['requirement.changed', 'replan.started', 'replan.completed', 'negotiation.discarded'])
 
+/** PO gate events (T15, G5): request/reject/discard get a distinct row; po.generated is the green finish line. */
+const PO_TYPES = new Set(['po.requested', 'po.generated', 'po.rejected', 'po.discarded'])
+
 const CHANGE_LABEL: Record<string, string> = { quantity: 'quantity', budget: 'budget', required_by: 'required by' }
 
 function changesOf(payload: Record<string, unknown>): [string, { before: unknown; after: unknown }][] {
@@ -81,13 +84,26 @@ function EventRow({ event }: { event: WorkflowEvent }) {
   const transition = event.state_before !== event.state_after
   const agent = typeof event.payload.agent === 'string' ? (event.payload.agent as string) : null
   const replan = REPLAN_TYPES.has(event.type)
-  const negotiation = !replan && isNegotiation(event.type)
+  const po = PO_TYPES.has(event.type)
+  const negotiation = !replan && !po && isNegotiation(event.type)
   const offer = negotiation ? offerOf(event.payload) : null
   const blocked = event.type === 'negotiation.policy_blocked'
   const counter = event.type === 'supplier.counter_offer'
   const violations = blocked && Array.isArray(event.payload.violations) ? (event.payload.violations as string[]) : []
   const replyText = counter && typeof event.payload.reply_text === 'string' ? (event.payload.reply_text as string) : null
-  const accent = replan || blocked ? 'border-l-2 border-l-red-500' : counter ? 'border-l-2 border-l-pink-400' : negotiation ? 'border-l-2 border-l-amber-400' : ''
+  const generated = event.type === 'po.generated'
+  const poNumber = generated ? ((event.payload.purchase_order as { po_number?: string } | undefined)?.po_number ?? null) : null
+  const accent = generated
+    ? 'border-l-2 border-l-emerald-400'
+    : replan || blocked || event.type === 'po.rejected' || event.type === 'po.discarded'
+      ? 'border-l-2 border-l-red-500'
+      : po
+        ? 'border-l-2 border-l-amber-400'
+        : counter
+          ? 'border-l-2 border-l-pink-400'
+          : negotiation
+            ? 'border-l-2 border-l-amber-400'
+            : ''
   const changes = event.type === 'requirement.changed' ? changesOf(event.payload) : []
   const reason = event.type === 'requirement.changed' && typeof event.payload.reason === 'string' ? (event.payload.reason as string) : ''
   const revisiting = event.type === 'replan.started' && Array.isArray(event.payload.revisiting) ? (event.payload.revisiting as string[]) : []
@@ -96,7 +112,13 @@ function EventRow({ event }: { event: WorkflowEvent }) {
   return (
     <li
       className={`rounded border px-3 py-2 text-sm ${
-        event.type === 'requirement.changed' ? 'border-red-800 bg-red-950/30' : transition ? 'border-zinc-700 bg-zinc-900' : 'border-zinc-800/60 bg-zinc-950/40'
+        generated
+          ? 'border-emerald-600 bg-emerald-950/40'
+          : event.type === 'requirement.changed'
+            ? 'border-red-800 bg-red-950/30'
+            : transition
+              ? 'border-zinc-700 bg-zinc-900'
+              : 'border-zinc-800/60 bg-zinc-950/40'
       } ${accent}`}
     >
       <div className="flex items-start gap-2">
@@ -143,6 +165,28 @@ function EventRow({ event }: { event: WorkflowEvent }) {
           ) : discarded ? (
             <p className="mt-0.5 break-words text-zinc-300">
               <span className="mr-1 rounded bg-red-900/50 px-1.5 py-0.5 text-[11px] text-red-100">draft discarded</span>
+              {event.summary}
+            </p>
+          ) : generated ? (
+            <div className="mt-0.5">
+              <p className="font-semibold text-emerald-200">
+                Purchase order generated{poNumber && <span className="mono ml-2 rounded bg-emerald-800/70 px-1.5 py-0.5 text-[11px] text-emerald-50">{poNumber}</span>}
+              </p>
+              <p className="mt-0.5 break-words text-xs text-zinc-300">{event.summary}</p>
+            </div>
+          ) : event.type === 'po.requested' ? (
+            <p className="mt-0.5 break-words text-zinc-200">
+              <span className="mr-1 rounded bg-amber-900/50 px-1.5 py-0.5 text-[11px] text-amber-100">awaiting human approval</span>
+              {event.summary}
+            </p>
+          ) : event.type === 'po.rejected' ? (
+            <p className="mt-0.5 break-words text-zinc-300">
+              <span className="mr-1 rounded bg-red-900/50 px-1.5 py-0.5 text-[11px] text-red-100">PO rejected by human</span>
+              {event.summary}
+            </p>
+          ) : event.type === 'po.discarded' ? (
+            <p className="mt-0.5 break-words text-zinc-300">
+              <span className="mr-1 rounded bg-red-900/50 px-1.5 py-0.5 text-[11px] text-red-100">PO preview discarded</span>
               {event.summary}
             </p>
           ) : (

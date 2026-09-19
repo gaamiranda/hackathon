@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { CalcMismatchDetail, NegotiationApprovalDetail, Run } from '../api/types'
+import type { CalcMismatchDetail, NegotiationApprovalDetail, PoApprovalDetail, Run } from '../api/types'
 import { money } from '../format'
+import { TotalsTable } from './DecisionPanel'
 import { Button, ErrorLine } from './Panel'
 
 /** Human gates (PLAN.md G1/G5/G6): rendered from run.pending_human.kind. */
@@ -11,12 +12,18 @@ export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void })
   // the pending draft stays on the backend and the bar below reopens it. Keyed per draft so a new one pops up.
   const [minimised, setMinimised] = useState<string | null>(null)
   if (!pending) return null
-  const draftKey = pending.kind === 'negotiation_approval' ? `${pending.details.supplier_id}-${pending.details.round}` : null
+  const draftKey =
+    pending.kind === 'negotiation_approval'
+      ? `${pending.details.supplier_id}-${pending.details.round}`
+      : pending.kind === 'po_approval'
+        ? `po-${pending.details.supplier_id}-${pending.details.request_version}`
+        : null
   if (draftKey && minimised === draftKey) {
+    const po = pending.kind === 'po_approval'
     return (
       <div className="fixed bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-700 bg-zinc-900 px-4 py-2 text-sm shadow-2xl">
-        <span className="text-amber-300">Negotiation draft awaiting your approval</span>
-        <span className="text-zinc-500">— nothing is sent while it waits</span>
+        <span className="text-amber-300">{po ? 'Purchase order awaiting your approval' : 'Negotiation draft awaiting your approval'}</span>
+        <span className="text-zinc-500">{po ? '— nothing is generated while it waits' : '— nothing is sent while it waits'}</span>
         <Button tone="ghost" onClick={() => setMinimised(null)}>
           Reopen
         </Button>
@@ -29,6 +36,8 @@ export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void })
     const d = pending.details as unknown as NegotiationApprovalDetail
     // Keyed per draft so the textarea resets when the next round (or supplier) comes up.
     body = <NegotiationGate key={`${d.supplier_id}-${d.round}`} run={run} onRun={onRun} detail={d} />
+  } else if (pending.kind === 'po_approval') {
+    body = <PoGate key={draftKey} run={run} onRun={onRun} detail={pending.details as unknown as PoApprovalDetail} />
   } else body = <ExtractionGate run={run} onRun={onRun} />
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
@@ -36,7 +45,7 @@ export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void })
         <div className="mb-1 flex items-baseline justify-between">
           <span className="text-xs font-semibold uppercase tracking-widest text-amber-400">Human review required · {pending.kind}</span>
           {draftKey && (
-            <button type="button" onClick={() => setMinimised(draftKey)} className="text-xs text-zinc-500 hover:text-zinc-300" title="set the draft aside (e.g. to inject a requirement change); it stays pending">
+            <button type="button" onClick={() => setMinimised(draftKey)} className="text-xs text-zinc-500 hover:text-zinc-300" title="set aside (e.g. to inject a requirement change); it stays pending">
               set aside ▾
             </button>
           )}
@@ -276,6 +285,87 @@ function NegotiationGate({ run, onRun, detail }: { run: Run; onRun: (r: Run) => 
           }}
         >
           Reset to draft
+        </Button>
+      </div>
+      <ErrorLine error={error} />
+    </div>
+  )
+}
+
+/**
+ * Final gate (G5): the human confirms the supplier and the engine's numbers, and only this click creates a
+ * purchase order. The preview shown here is exactly what the backend will number and sign; if the engine's
+ * totals moved in between, approve-po answers 409 totals_changed and nothing is generated.
+ */
+function PoGate({ run, onRun, detail }: { run: Run; onRun: (r: Run) => void; detail: PoApprovalDetail }) {
+  const { busy, error, act } = useAction(onRun)
+  const [approver, setApprover] = useState('demo-user')
+  const [reason, setReason] = useState('')
+  const preview = run.po_preview
+  const quote = run.quotes.find((q) => q.supplier_id === detail.supplier_id)
+  const cur = preview?.currency ?? run.request.currency
+  const quantity = preview?.line_items[0]?.quantity ?? run.request.quantity
+  const available = Math.round((new Date(run.request.required_by).getTime() - new Date(run.request.created_at).getTime()) / 86_400_000)
+  const onTime = detail.lead_time_days <= available
+  const input = 'mono w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none'
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="rounded border border-zinc-700 bg-zinc-950/60 p-3">
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="font-medium">{detail.supplier_name}</span>
+          <span className="mono text-xs text-zinc-500">
+            {detail.supplier_id} · request v{detail.request_version}
+          </span>
+        </div>
+        <div className="mono grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded bg-zinc-900 p-2">
+            <div className="text-[10px] uppercase text-zinc-500">Quantity</div>
+            <div className="text-zinc-200">
+              {quantity.toLocaleString()} × {run.request.product}
+            </div>
+          </div>
+          <div className="rounded bg-zinc-900 p-2">
+            <div className="text-[10px] uppercase text-zinc-500">Unit price</div>
+            <div className="text-emerald-300">
+              {detail.unit_price} {cur}
+              {detail.negotiated && (
+                <span className="ml-1.5 rounded bg-amber-900/60 px-1 py-0.5 text-[10px] text-amber-200" title={quote ? `quoted ${quote.unit_price}/unit` : undefined}>
+                  negotiated
+                </span>
+              )}
+            </div>
+            {detail.negotiated && quote && <div className="text-[10px] text-zinc-500">quoted {quote.unit_price}</div>}
+          </div>
+          <div className="rounded bg-zinc-900 p-2">
+            <div className="text-[10px] uppercase text-zinc-500">Lead time vs required by</div>
+            <div className={onTime ? 'text-zinc-200' : 'text-red-300'}>
+              {detail.lead_time_days} d {onTime ? '≤' : '>'} {available} d
+            </div>
+            <div className="text-[10px] text-zinc-500">due {run.request.required_by}</div>
+          </div>
+        </div>
+        <TotalsTable totals={detail.totals} currency={cur} />
+        {preview?.payment_terms && <p className="mt-1.5 text-[11px] text-zinc-500">Payment terms: {preview.payment_terms}</p>}
+        <p className="mt-1.5 text-[11px] text-zinc-500">Every figure above is the deterministic engine's; the PO is numbered only after your approval.</p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block text-xs text-zinc-400">
+          Approver name
+          <input className={input} value={approver} disabled={busy} onChange={(e) => setApprover(e.target.value)} />
+        </label>
+        <label className="block text-xs text-zinc-400">
+          Rejection reason (optional)
+          <input className={input} value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)} placeholder="why not this supplier?" />
+        </label>
+      </div>
+
+      <div className="flex gap-2">
+        <Button disabled={busy || approver.trim() === ''} onClick={() => act(() => api.approvePo(run.run_id, approver.trim()))}>
+          {busy ? 'Generating…' : 'Approve Final Supplier & Generate PO'}
+        </Button>
+        <Button tone="danger" disabled={busy} onClick={() => act(() => api.rejectPo(run.run_id, reason.trim()))}>
+          Reject
         </Button>
       </div>
       <ErrorLine error={error} />

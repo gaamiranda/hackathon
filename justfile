@@ -59,7 +59,7 @@ demo:
 demo-week2:
     cd backend && uv run python scripts/demo_week2.py
 
-# Week 3 demo over HTTP against a running backend: Week 2 path, then the interrupt 2,000 → 5,000 / budget 75,000
+# Week 3 demo over HTTP against a running backend: Week 2 path, the interrupt 2,000 → 5,000 / budget 75,000, then request + approve the PO (PDF in backend/out/)
 demo-week3:
     cd backend && uv run python scripts/demo_week3.py
 

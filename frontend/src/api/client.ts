@@ -1,4 +1,4 @@
-import type { CreateRunInput, Health, InterruptInput, NegotiationThread, Run, RunSummary, WorkflowEvent } from './types'
+import type { CreateRunInput, Health, InterruptInput, NegotiationThread, PurchaseOrder, Run, RunSummary, WorkflowEvent } from './types'
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
 
@@ -89,6 +89,21 @@ export const api = {
   interrupt: (runId: string, body: InterruptInput) => request<Run>(`/runs/${runId}/interrupt`, json('POST', body)),
 
   listNegotiations: (runId: string) => request<Record<string, NegotiationThread>>(`/runs/${runId}/negotiations`),
+
+  /** RECOMMENDED → AWAITING_PO_APPROVAL with run.po_preview (409 no_recommendation | supplier_ineligible). */
+  requestPo: (runId: string) => request<Run>(`/runs/${runId}/request-po`, { method: 'POST' }),
+
+  /** Human gate (G5): the only call that creates a purchase order. 409 totals_changed if the engine's figures moved. */
+  approvePo: (runId: string, approvedBy: string) => request<Run>(`/runs/${runId}/approve-po`, json('POST', { approved_by: approvedBy })),
+
+  /** AWAITING_PO_APPROVAL → RECOMMENDED; the preview is dropped. */
+  rejectPo: (runId: string, reason: string) => request<Run>(`/runs/${runId}/reject-po`, json('POST', { reason })),
+
+  /** 404 until the PO has been generated. */
+  getPo: (runId: string) => request<PurchaseOrder>(`/runs/${runId}/po`),
+
+  /** Download link for the generated PO (application/pdf; 404 until generated). */
+  poPdfUrl: (runId: string) => `${API_URL}/runs/${runId}/po.pdf`,
 
   listEvents: (runId: string, since = -1) => request<WorkflowEvent[]>(`/runs/${runId}/events?since=${since}`),
 

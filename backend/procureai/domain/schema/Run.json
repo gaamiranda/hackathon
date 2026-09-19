@@ -486,7 +486,8 @@
       "enum": [
         "extraction",
         "calc_mismatch",
-        "negotiation_approval"
+        "negotiation_approval",
+        "po_approval"
       ],
       "title": "PendingHumanKind",
       "type": "string"
@@ -601,6 +602,245 @@
         "created_at"
       ],
       "title": "ProcurementRequest",
+      "type": "object"
+    },
+    "PurchaseOrder": {
+      "additionalProperties": false,
+      "description": "Built only by the orchestrator's request_po (preview) / approve_po (final) path (G5).\n\nA preview (Run.po_preview) has po_number, approved_by and approved_at = None; the final\ndocument (Run.purchase_order) has all three set. No agent or tool constructs this model.",
+      "properties": {
+        "po_number": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None on the preview; assigned at human approval",
+          "title": "Po Number"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "request_version": {
+          "description": "Request version the totals were costed at",
+          "minimum": 1,
+          "title": "Request Version",
+          "type": "integer"
+        },
+        "supplier": {
+          "$ref": "#/$defs/SupplierRef"
+        },
+        "currency": {
+          "description": "ISO-4217 code",
+          "pattern": "^[A-Z]{3}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "line_items": {
+          "items": {
+            "$ref": "#/$defs/PurchaseOrderLine"
+          },
+          "minItems": 1,
+          "title": "Line Items",
+          "type": "array"
+        },
+        "totals": {
+          "$ref": "#/$defs/PurchaseOrderTotals"
+        },
+        "lead_time_days": {
+          "description": "Effective (negotiated if any) lead time",
+          "minimum": 0,
+          "title": "Lead Time Days",
+          "type": "integer"
+        },
+        "payment_terms": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "As stated on the supplier's quote",
+          "title": "Payment Terms"
+        },
+        "negotiated": {
+          "default": false,
+          "description": "True when unit price / lead time come from an accepted counter-offer",
+          "title": "Negotiated",
+          "type": "boolean"
+        },
+        "approved_by": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None on the preview",
+          "title": "Approved By"
+        },
+        "approved_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None on the preview",
+          "title": "Approved At"
+        }
+      },
+      "required": [
+        "run_id",
+        "request_version",
+        "supplier",
+        "currency",
+        "line_items",
+        "totals",
+        "lead_time_days"
+      ],
+      "title": "PurchaseOrder",
+      "type": "object"
+    },
+    "PurchaseOrderLine": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "quantity": {
+          "exclusiveMinimum": 0,
+          "title": "Quantity",
+          "type": "integer"
+        },
+        "unit_price": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        },
+        "line_total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Line Total"
+        }
+      },
+      "required": [
+        "description",
+        "quantity",
+        "unit_price",
+        "line_total"
+      ],
+      "title": "PurchaseOrderLine",
+      "type": "object"
+    },
+    "PurchaseOrderTotals": {
+      "additionalProperties": false,
+      "properties": {
+        "subtotal": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Subtotal"
+        },
+        "discount": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Discount"
+        },
+        "shipping": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Shipping"
+        },
+        "tax": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Tax"
+        },
+        "total": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Total"
+        }
+      },
+      "required": [
+        "subtotal",
+        "discount",
+        "shipping",
+        "tax",
+        "total"
+      ],
+      "title": "PurchaseOrderTotals",
       "type": "object"
     },
     "QuoteChecks": {
@@ -994,6 +1234,25 @@
         "score_after"
       ],
       "title": "SupplierImpact",
+      "type": "object"
+    },
+    "SupplierRef": {
+      "additionalProperties": false,
+      "properties": {
+        "supplier_id": {
+          "title": "Supplier Id",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "supplier_id",
+        "name"
+      ],
+      "title": "SupplierRef",
       "type": "object"
     },
     "Thresholds": {
@@ -1434,6 +1693,30 @@
       ],
       "default": null,
       "description": "Diff of the last replan; None before any interrupt"
+    },
+    "po_preview": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PurchaseOrder"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Unnumbered PO awaiting approval (AWAITING_PO_APPROVAL only)"
+    },
+    "purchase_order": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/PurchaseOrder"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Final PO; set only by approve_po (PO_GENERATED)"
     },
     "created_at": {
       "format": "date-time",

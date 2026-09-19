@@ -59,6 +59,25 @@ Backend: `cd backend && uv run uvicorn procureai.api.app:app --reload` (mock mod
     explanation. The ranking below is Cobalt 62.9, Apex 58.6, Borealis ineligible; both negotiated offers are still
     applied. The request header shows **v2** and "1 previous version" expands to the v1 request.
 
+### Purchase order (final human gate G5)
+
+13. In the Decision panel the green **Purchase order** section now offers **Request purchase order** (only while the
+    recommendation is eligible). Click it: the timeline shows `po.requested` (RECOMMENDED → AWAITING_PO_APPROVAL) and the
+    **po_approval** dialog opens with Cobalt Industrial, 5,000 × Product X, unit price **12.45 USD** tagged *negotiated*
+    (quoted 13.40), lead time 9 d vs the 14 d available, the engine's totals (subtotal 62,250.00, tax 5,602.50,
+    **total 67,852.50**), payment terms, and an approver name (default `demo-user`).
+14. Click **Approve Final Supplier & Generate PO**. This is the only path that creates a purchase order — no agent has
+    a tool for it. The timeline shows `po.generated` (human, green, with the PO number), the state badge turns
+    **PO_GENERATED**, and the Decision panel opens with the **Purchase order generated** card: PO number
+    `PO-<YYYYMMDD>-<run id prefix>`, supplier, line, lead time, payment terms, totals, "approved by demo-user at …".
+    Click **Download PO (PDF)** to open the one-page PDF (`GET /runs/{id}/po.pdf`). Negotiation and Inject change are
+    gone: PO_GENERATED is terminal (every further action answers 409).
+
+Variants: **Reject** on the PO dialog returns to RECOMMENDED (`po.rejected`) and negotiation / interrupt stay
+available. **set aside ▾** on the PO dialog reaches the Inject change form; an interrupt from AWAITING_PO_APPROVAL logs
+`po.discarded` before replanning, and the PO can be requested again at the new version. If the engine's totals were to
+move between preview and approval, approve-po answers 409 `totals_changed` and nothing is generated.
+
 Variants: inject quantity 5000 without raising the budget → every supplier is over budget, the recommendation shows
 **Escalation: no eligible supplier** and the run stays in RECOMMENDED for the human to decide. Injecting while a
 negotiation draft is pending (use **set aside ▾** on the dialog to reach the form) discards the unsent draft
@@ -82,16 +101,19 @@ update the TS type by hand (no codegen step yet). Money fields are strings ("12.
 
 ```
 src/
-  api/client.ts         typed fetch wrappers for every backend route (incl. interrupt) + SSE URL; ApiError.violations on 422 policy_violation
-  api/types.ts          Run, WorkflowEvent, Scorecard, Recommendation, PendingHuman, NormalizedQuote, NegotiationThread, …
+  api/client.ts         typed fetch wrappers for every backend route (incl. interrupt, request/approve/reject PO, poPdfUrl) + SSE URL;
+                        ApiError.violations on 422 policy_violation
+  api/types.ts          Run, WorkflowEvent, Scorecard, Recommendation, PendingHuman, NormalizedQuote, NegotiationThread, PurchaseOrder, …
   hooks/useEventStream  EventSource with replay-on-connect and reconnect(since=last seq)
   pages/RunListPage     GET /runs + POST /runs form
   pages/RunPage         3-column layout, run state + version badge, refetch rules (recommendation.ready, *.needs_human,
                         calc.mismatch, extraction.completed, negotiation.awaiting_approval, negotiation.closed,
-                        requirement.changed, replan.completed), human gates
+                        requirement.changed, replan.completed, po.*), human gates
   components/           RequestPanel (upload, quotes, Evaluate, Inject change with demo preset, previous versions),
-                        TimelinePanel (negotiation events with offer chips; requirement.changed / replan.* / negotiation.discarded),
-                        DecisionPanel (Replan impact card, ranking, Start negotiation, per-supplier threads, What changed),
-                        HumanGate (extraction, calc_mismatch, negotiation_approval with "set aside"), StateBadge, Panel
+                        TimelinePanel (negotiation events with offer chips; requirement.changed / replan.* / negotiation.discarded;
+                        po.requested / po.generated (green, PO number) / po.rejected / po.discarded),
+                        DecisionPanel (PO card + PDF link, Replan impact card, ranking, Request purchase order, Start negotiation,
+                        per-supplier threads, What changed),
+                        HumanGate (extraction, calc_mismatch, negotiation_approval and po_approval with "set aside"), StateBadge, Panel
   format.ts             money(string) formatting without float parsing
 ```

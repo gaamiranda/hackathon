@@ -15,6 +15,8 @@ const TONE: Partial<Record<WorkflowState, string>> = {
   NEGOTIATING: 'bg-pink-900/60 text-pink-200',
   COUNTER_RECEIVED: 'bg-pink-900/60 text-pink-200',
   RE_SCORING: 'bg-violet-900/60 text-violet-200',
+  AWAITING_PO_APPROVAL: 'bg-amber-900/70 text-amber-200 ring-1 ring-amber-500',
+  PO_GENERATED: 'bg-emerald-600/80 text-white ring-1 ring-emerald-300',
   REPLANNING: 'bg-red-900/70 text-red-200 ring-1 ring-red-500',
 }
 

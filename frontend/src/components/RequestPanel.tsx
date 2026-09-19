@@ -7,7 +7,7 @@ import { Button, ErrorLine, Panel } from './Panel'
 const CRITICAL = ['unit_price', 'currency', 'moq', 'lead_time_days', 'quantity_quoted']
 const ACCEPT = '.pdf,.xlsx,.txt,.eml'
 /** States that accept POST /runs/{id}/interrupt (D22). */
-const INTERRUPTIBLE: WorkflowState[] = ['RECOMMENDED', 'EXTRACTED', 'AWAITING_NEGOTIATION_APPROVAL']
+const INTERRUPTIBLE: WorkflowState[] = ['RECOMMENDED', 'EXTRACTED', 'AWAITING_NEGOTIATION_APPROVAL', 'AWAITING_PO_APPROVAL']
 /** The §15 demo moment: Borealis (capacity 4,000) drops out, Cobalt takes over. */
 const DEMO_PRESET = { quantity: 5000, budget: '75000.00', reason: 'Customer order upsized' }
 
@@ -188,7 +188,7 @@ function InjectChange({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
       </div>
       <p className="mt-1 text-xs text-zinc-400">
         Change the requirement mid-workflow. The agents revisit capacity, MOQ, pricing, lead time, budget and risk on the quotes already extracted
-        {run.state === 'AWAITING_NEGOTIATION_APPROVAL' ? '; the unsent negotiation draft is discarded.' : '.'}
+        {run.state === 'AWAITING_NEGOTIATION_APPROVAL' ? '; the unsent negotiation draft is discarded.' : run.state === 'AWAITING_PO_APPROVAL' ? '; the unapproved PO preview is discarded.' : '.'}
       </p>
       <button
         type="button"

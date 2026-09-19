@@ -9,7 +9,7 @@ from procureai.api.routes_runs import router as runs_router
 from procureai.config.settings import get_settings
 from procureai.workflow import WorkflowError
 
-NOT_FOUND_CODES = {"run_not_found", "quote_not_found", "document_not_found"}
+NOT_FOUND_CODES = {"run_not_found", "quote_not_found", "document_not_found", "po_not_found"}
 
 app = FastAPI(title="ProcureAI", version="0.1.0", lifespan=lifespan)
 app.add_middleware(

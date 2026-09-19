@@ -148,14 +148,30 @@
     }
   },
   "additionalProperties": false,
+  "description": "Built only by the orchestrator's request_po (preview) / approve_po (final) path (G5).\n\nA preview (Run.po_preview) has po_number, approved_by and approved_at = None; the final\ndocument (Run.purchase_order) has all three set. No agent or tool constructs this model.",
   "properties": {
     "po_number": {
-      "title": "Po Number",
-      "type": "string"
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "None on the preview; assigned at human approval",
+      "title": "Po Number"
     },
     "run_id": {
       "title": "Run Id",
       "type": "string"
+    },
+    "request_version": {
+      "description": "Request version the totals were costed at",
+      "minimum": 1,
+      "title": "Request Version",
+      "type": "integer"
     },
     "supplier": {
       "$ref": "#/$defs/SupplierRef"
@@ -177,25 +193,67 @@
     "totals": {
       "$ref": "#/$defs/PurchaseOrderTotals"
     },
+    "lead_time_days": {
+      "description": "Effective (negotiated if any) lead time",
+      "minimum": 0,
+      "title": "Lead Time Days",
+      "type": "integer"
+    },
+    "payment_terms": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "As stated on the supplier's quote",
+      "title": "Payment Terms"
+    },
+    "negotiated": {
+      "default": false,
+      "description": "True when unit price / lead time come from an accepted counter-offer",
+      "title": "Negotiated",
+      "type": "boolean"
+    },
     "approved_by": {
-      "title": "Approved By",
-      "type": "string"
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "None on the preview",
+      "title": "Approved By"
     },
     "approved_at": {
-      "format": "date-time",
-      "title": "Approved At",
-      "type": "string"
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "None on the preview",
+      "title": "Approved At"
     }
   },
   "required": [
-    "po_number",
     "run_id",
+    "request_version",
     "supplier",
     "currency",
     "line_items",
     "totals",
-    "approved_by",
-    "approved_at"
+    "lead_time_days"
   ],
   "title": "PurchaseOrder",
   "type": "object"

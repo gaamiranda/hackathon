@@ -1,20 +1,25 @@
 """Week 3 tracer bullet over HTTP: the Week 2 path (negotiated, Borealis recommended), then the interrupt
-"quantity 2,000 → 5,000, budget 75,000" (PLAN.md §1 step 8, D22, §15). Assumes the API is running (`just backend`).
+"quantity 2,000 → 5,000, budget 75,000" (PLAN.md §1 step 8, D22, §15), then the final human gate: request the
+purchase order, approve it as "demo-user" (G5) and download the PDF. Assumes the API is running (`just backend`).
 
-Prints the replan events as they were logged, the per-supplier impact table and the change explanation.
-Expected end state: Cobalt recommended, Borealis ineligible on capacity.
+Prints the replan events as they were logged, the per-supplier impact table, the change explanation and the PO
+summary; writes the PDF to backend/out/<po_number>.pdf.
+Expected end state: PO_GENERATED for Cobalt Industrial, 5,000 units at 12.45.
 
 Usage: cd backend && uv run python scripts/demo_week3.py [http://127.0.0.1:8000]
 """
 
 import sys
 import textwrap
+from pathlib import Path
 
 import httpx
 
 from demo_week2 import main as week2
 
 INTERRUPT = {"quantity": 5000, "budget": "75000.00", "reason": "Customer order upsized"}
+APPROVER = "demo-user"
+OUT_DIR = Path(__file__).resolve().parents[1] / "out"
 
 
 def main(base_url: str) -> None:
@@ -47,6 +52,37 @@ def main(base_url: str) -> None:
     print(textwrap.indent(textwrap.fill(rec["change_explanation"], 100), "  "))
     assert rec["recommended_supplier_id"] == "sup_c", rec
     assert any(s["supplier_id"] == "sup_b" and not s["eligible_after"] for s in impact["per_supplier"]), impact
+
+    print("\n=== PO GATE: request purchase order for the recommended supplier ===")
+    run = c.post(f"/runs/{run_id}/request-po").raise_for_status().json()
+    d = run["pending_human"]["details"]
+    print(f"state: {run['state']}; pending human ({run['pending_human']['kind']}): {run['pending_human']['message']}")
+    print(f"  {d['supplier_name']} ({d['supplier_id']}): {run['request']['quantity']:,} × {d['unit_price']}/unit"
+          f"{' (negotiated)' if d['negotiated'] else ''}, lead {d['lead_time_days']} d, request v{d['request_version']}")
+    print("  totals: " + ", ".join(f"{k} {v}" for k, v in d["totals"].items()))
+
+    print(f"\n=== HUMAN: approve final supplier & generate PO (approved_by={APPROVER!r}) ===")
+    run = c.post(f"/runs/{run_id}/approve-po", json={"approved_by": APPROVER}).raise_for_status().json()
+    po = run["purchase_order"]
+    line = po["line_items"][0]
+    print(f"state: {run['state']}")
+    print(f"  {po['po_number']}  {po['supplier']['name']} ({po['supplier']['supplier_id']})  "
+          f"{line['quantity']:,} × {line['description']} @ {line['unit_price']} {po['currency']}")
+    print(f"  subtotal {po['totals']['subtotal']}  discount {po['totals']['discount']}  shipping {po['totals']['shipping']}  "
+          f"tax {po['totals']['tax']}  TOTAL {po['totals']['total']} {po['currency']}")
+    print(f"  lead time {po['lead_time_days']} d{' (negotiated)' if po['negotiated'] else ''}; payment terms {po['payment_terms']}; "
+          f"approved by {po['approved_by']} at {po['approved_at']}")
+    for e in c.get(f"/runs/{run_id}/events").json()[-2:]:
+        print(f"  #{e['seq']:<3} {e['actor']:<8} {e['type']:<28} {e['state_before']} → {e['state_after']}")
+
+    pdf = c.get(f"/runs/{run_id}/po.pdf").raise_for_status()
+    assert pdf.headers["content-type"] == "application/pdf" and pdf.content.startswith(b"%PDF")
+    OUT_DIR.mkdir(exist_ok=True)
+    path = OUT_DIR / f"{po['po_number']}.pdf"
+    path.write_bytes(pdf.content)
+    print(f"\nPDF written: {path} ({len(pdf.content):,} bytes)")
+    assert run["state"] == "PO_GENERATED" and po["supplier"]["supplier_id"] == "sup_c", run["state"]
+    assert line["quantity"] == 5000 and line["unit_price"] == "12.45", line
 
 
 if __name__ == "__main__":
