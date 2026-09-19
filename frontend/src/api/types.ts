@@ -161,6 +161,35 @@ export interface Recommendation {
   escalation: { reason: string; details: Record<string, unknown> } | null
 }
 
+/** Structured diff of the last interrupt → replan (D22). */
+export interface FieldChange {
+  before: unknown
+  after: unknown
+}
+
+export interface SupplierImpact {
+  supplier_id: string
+  eligible_before: boolean
+  eligible_after: boolean
+  landed_before: Money
+  landed_after: Money
+  score_before: number
+  score_after: number
+  reasons: string[]
+}
+
+export interface ReplanImpact {
+  from_version: number
+  to_version: number
+  /** request field ("quantity" | "budget" | "required_by") → before/after */
+  changes: Record<string, FieldChange>
+  per_supplier: SupplierImpact[]
+  recommended_before: string | null
+  recommended_after: string | null
+  /** engine.diff.explain_diff lines (deterministic) */
+  summary_lines: string[]
+}
+
 export type PendingHumanKind = 'extraction' | 'calc_mismatch' | 'negotiation_approval'
 
 export interface CalcMismatchDetail {
@@ -208,6 +237,10 @@ export interface Run {
   pending_human: PendingHuman | null
   /** supplier_id → thread */
   negotiations: Record<string, NegotiationThread>
+  /** Previous request versions, oldest first (one per interrupt). */
+  request_history: ProcurementRequest[]
+  /** Diff of the last replan; null before any interrupt. */
+  replan_impact: ReplanImpact | null
   created_at: string
   updated_at: string
 }
@@ -238,6 +271,14 @@ export interface CreateRunInput {
   required_by: string
   budget: Money
   currency: string
+}
+
+/** POST /runs/{id}/interrupt: at least one of the three fields must differ from the current request. */
+export interface InterruptInput {
+  quantity?: number
+  budget?: Money
+  required_by?: string
+  reason?: string
 }
 
 export interface Health {

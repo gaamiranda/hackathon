@@ -59,6 +59,10 @@ demo:
 demo-week2:
     cd backend && uv run python scripts/demo_week2.py
 
+# Week 3 demo over HTTP against a running backend: Week 2 path, then the interrupt 2,000 → 5,000 / budget 75,000
+demo-week3:
+    cd backend && uv run python scripts/demo_week3.py
+
 # Full negotiated run in-process (mock mode): mismatch → negotiation with top-2 → re-score; prints the event log
 demo-negotiation:
     cd backend && uv run python scripts/demo_negotiation.py

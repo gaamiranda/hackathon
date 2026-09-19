@@ -1,4 +1,4 @@
-import type { CreateRunInput, Health, NegotiationThread, Run, RunSummary, WorkflowEvent } from './types'
+import type { CreateRunInput, Health, InterruptInput, NegotiationThread, Run, RunSummary, WorkflowEvent } from './types'
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
 
@@ -84,6 +84,9 @@ export const api = {
   /** Human gate (G5). Pass `message` only when the draft was edited; the backend re-filters it (422 policy_violation). */
   approveNegotiation: (runId: string, supplierId: string, message?: string) =>
     request<Run>(`/runs/${runId}/negotiation/${supplierId}/approve`, json('POST', message === undefined ? {} : { message })),
+
+  /** Mid-workflow requirement change → REPLANNING → RECOMMENDED with run.replan_impact (409 illegal_transition | no_change). */
+  interrupt: (runId: string, body: InterruptInput) => request<Run>(`/runs/${runId}/interrupt`, json('POST', body)),
 
   listNegotiations: (runId: string) => request<Record<string, NegotiationThread>>(`/runs/${runId}/negotiations`),
 

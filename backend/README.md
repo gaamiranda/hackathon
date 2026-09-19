@@ -35,7 +35,12 @@ curl -N localhost:8000/runs/<run_id>/events/stream            # live SSE event l
 ```
 
 Routes: see `procureai/api/routes_runs.py` (`POST /runs`, `POST /runs/{id}/documents`, `POST /runs/{id}/evaluate`,
-`POST /runs/{id}/quotes/{qid}/correct|confirm-math`, `GET /runs/{id}`, `GET /runs/{id}/events[/stream]`).
+`POST /runs/{id}/quotes/{qid}/correct|confirm-math`, `POST /runs/{id}/negotiate`, `POST /runs/{id}/negotiation/{sid}/approve`,
+`POST /runs/{id}/interrupt` (Week 3: {quantity?, budget?, required_by?, reason?} → replan on the existing quotes),
+`GET /runs/{id}`, `GET /runs/{id}/events[/stream]`).
+
+Later weeks over HTTP: `uv run python scripts/demo_week2.py` (negotiation loop) and `scripts/demo_week3.py` (then the
+interrupt 2,000 → 5,000 / budget 75,000: prints the replan events, the impact table and the change explanation).
 
 ## Regenerate JSON schemas
 

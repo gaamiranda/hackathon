@@ -5,19 +5,24 @@ CREATED → EXTRACTING → [NEEDS_HUMAN_EXTRACTION] → EXTRACTED → VALIDATING
         → (per supplier, top negotiate_top_n, sequentially; ≤ max_rounds buyer turns each)
           NEGOTIATION_DRAFTED → AWAITING_NEGOTIATION_APPROVAL → NEGOTIATING → COUNTER_RECEIVED
         → RE_SCORING → RECOMMENDED
+RECOMMENDED | EXTRACTED | AWAITING_NEGOTIATION_APPROVAL → (interrupt, D22) REPLANNING → VALIDATING → … → RECOMMENDED
 
 The orchestrator owns state and calls agents/engine; it never does arithmetic. Negotiation
 guardrails live here, not in the agent: the round limit (G2) and the outbound leakage filter (G3).
 """
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
 from procureai.agents.base import CRITICAL_FIELDS, AgentSet
 from procureai.domain.models import (
+    Escalation,
     EventActor,
+    FieldChange,
     NegotiationOffer,
     NegotiationRole,
     NegotiationStatus,
@@ -30,8 +35,10 @@ from procureai.domain.models import (
     ProcurementRequest,
     RawDocument,
     Recommendation,
+    ReplanImpact,
     Run,
     Scorecard,
+    SupplierImpact,
     SupplierProfile,
     WorkflowState,
 )
@@ -46,6 +53,7 @@ from procureai.engine import (
     explain_diff,
     recommended_id,
 )
+from procureai.engine.costing import pre_tax_total
 from procureai.engine.policy import buyer_turns
 from procureai.sim import ScriptedSupplier, SupplierSim
 from procureai.workflow.errors import WorkflowError
@@ -60,6 +68,27 @@ def _json(model_or_list: Any) -> Any:
     if isinstance(model_or_list, list):
         return [m.model_dump(mode="json") for m in model_or_list]
     return model_or_list.model_dump(mode="json")
+
+
+# Which engine checks an interrupt revisits, per changed request field (replan.started payload).
+REVISITED_BY_FIELD: dict[str, list[str]] = {
+    "quantity": ["capacity", "moq", "pricing", "budget", "risk"],
+    "budget": ["budget"],
+    "required_by": ["lead_time"],
+}
+REVISIT_ORDER = ["capacity", "moq", "pricing", "lead_time", "budget", "risk"]
+
+
+@dataclass
+class _Replan:
+    """Pre-interrupt snapshot kept until the replan reaches RECOMMENDED (survives a CALC_MISMATCH stop)."""
+
+    from_version: int
+    to_version: int
+    changes: dict[str, FieldChange]
+    scorecards: list[Scorecard]
+    recommended: str | None
+    math_resolved: bool
 
 
 class Orchestrator:
@@ -80,6 +109,7 @@ class Orchestrator:
         self.engine = engine
         self.new_id = id_factory or (lambda: f"run-{uuid4().hex[:8]}")
         self.supplier = supplier or ScriptedSupplier()
+        self._replans: dict[str, _Replan] = {}
 
     # ------------------------------------------------------------------ public API
 
@@ -177,7 +207,9 @@ class Orchestrator:
                 raise WorkflowError("not_pending", f"quote {quote_id!r} has no pending calculation mismatch")
             idx = self._quote_index(run, quote_id)
             quote = run.quotes[idx]
-            computed = next(v.pre_tax_total for v in run.validated if v.quote_id == quote_id)
+            # The printed total refers to the supplier's quoted quantity, not the (possibly replanned) request
+            # quantity; storing this figure keeps math_ok true at any later quantity.
+            computed = self._quoted_total(quote)
             if use_computed:
                 run.quotes[idx] = quote.model_copy(update={"llm_stated_total": computed})
                 self._emit(run, EventActor.HUMAN, "quote.math_confirmed",
@@ -271,6 +303,128 @@ class Orchestrator:
                               "offer": _json(reply.offer) if reply.offer else None, "reply_text": reply.reply_text})
             self._settle_round(run, thread, quote, reply.offer, round_no)
             return self._save(run)
+
+    def interrupt(self, run_id: str, *, quantity: int | None = None, budget: Decimal | None = None,
+                  required_by: date | None = None, reason: str = "") -> Run:
+        """Mid-workflow requirement change (D22): request version+1 (previous kept in request_history),
+        a pending negotiation draft is discarded, then the same evaluate path runs again on the existing
+        quotes (negotiated offers carried over, nothing re-extracted) → RECOMMENDED with a ReplanImpact.
+        Nothing eligible afterwards is an escalation for the human, not an error."""
+        with self.store.lock:
+            run = self.store.get(run_id)
+            self._require(run, {S.RECOMMENDED, S.EXTRACTED, S.AWAITING_NEGOTIATION_APPROVAL}, "interrupt")
+            old = run.request
+            if budget is not None:
+                budget = Decimal(budget).quantize(Decimal("0.01"))
+            proposed = {"quantity": quantity, "budget": budget, "required_by": required_by}
+            changes = {k: FieldChange(before=getattr(old, k), after=v)
+                       for k, v in proposed.items() if v is not None and v != getattr(old, k)}
+            if not changes:
+                raise WorkflowError("no_change", "interrupt needs at least one of quantity, budget, required_by to change")
+
+            run.request_history.append(old)
+            run.request = old.model_copy(update={**{k: c.after for k, c in changes.items()}, "version": old.version + 1})
+            self._emit(run, EventActor.HUMAN, "requirement.changed",
+                       f"Requirement changed (v{old.version} → v{run.request.version}): " + ", ".join(
+                           f"{k} {self._fmt(c.before)} → {self._fmt(c.after)}" for k, c in changes.items())
+                       + (f" — {reason}" if reason else ""),
+                       {"from_version": old.version, "to_version": run.request.version,
+                        "changes": {k: _json(c) for k, c in changes.items()}, "reason": reason,
+                        "request": _json(run.request)})
+
+            pending = run.pending_human
+            if pending is not None and pending.kind == PendingHumanKind.NEGOTIATION_APPROVAL:
+                self._discard_draft(run, pending)
+
+            self._replans[run.run_id] = _Replan(
+                from_version=old.version, to_version=run.request.version, changes=changes,
+                scorecards=list(run.scorecards), recommended=recommended_id(run.scorecards),
+                math_resolved=bool(run.scorecards))
+            revisiting = [r for r in REVISIT_ORDER if any(r in REVISITED_BY_FIELD[k] for k in changes)]
+            self._transition(run, S.REPLANNING, EventActor.ENGINE, "replan.started",
+                             "Replanning without restart: revisiting " + ", ".join(revisiting)
+                             + f" for {len(run.quotes)} existing quote(s)",
+                             {"from_version": old.version, "to_version": run.request.version,
+                              "revisiting": revisiting, "changed_fields": sorted(changes),
+                              "quote_ids": [q.quote_id for q in run.quotes],
+                              "negotiated": [q.supplier_id for q in run.quotes if q.negotiated_offer]})
+            self._evaluate(run)
+            return self._save(run)
+
+    # ------------------------------------------------------------------ replan internals
+
+    def _discard_draft(self, run: Run, pending: PendingHuman) -> None:
+        """Drop an unsent negotiation draft (nothing was ever sent, G5). The thread is settled with the
+        best offer received so far, if any, so the replan costs the supplier at its negotiated terms."""
+        sid, round_no = pending.details["supplier_id"], pending.details["round"]
+        run.pending_human = None
+        thread = run.negotiations.get(sid)
+        applied = None
+        if thread is not None and thread.status == NegotiationStatus.OPEN:
+            thread.status = NegotiationStatus.CLOSED
+            applied = self._best_received(thread)
+            if applied is not None:
+                thread.current_offer = applied
+                quote = self._quote_for_supplier(run, sid)
+                run.quotes[self._quote_index(run, quote.quote_id)] = quote.model_copy(update={"negotiated_offer": applied})
+        self._emit(run, EventActor.ENGINE, "negotiation.discarded",
+                   f"Unsent round {round_no} draft to {sid} discarded by the requirement change"
+                   + (f"; keeping the {applied.unit_price}/unit, {applied.lead_time_days} d already offered" if applied
+                      else ""),
+                   {"supplier_id": sid, "round": round_no, "draft": pending.details.get("draft"),
+                    "applied_offer": _json(applied) if applied else None})
+
+    def _finish_replan(self, run: Run, ctx: _Replan) -> None:
+        """Build ReplanImpact from the pre-interrupt scorecards, escalate if nothing is eligible, emit replan.completed."""
+        before = {c.supplier_id: c for c in ctx.scorecards}
+        after = {c.supplier_id: c for c in run.scorecards}
+        per_supplier: list[SupplierImpact] = []
+        for sid in [c.supplier_id for c in run.scorecards] + [s for s in before if s not in after]:
+            b, a = before.get(sid), after.get(sid)
+            reasons: list[str] = []
+            if a is None:
+                reasons.append("no longer scored")
+            elif not a.eligible:
+                reasons.extend(a.ineligibility_reasons)
+                if b is not None and b.eligible:
+                    reasons.insert(0, "became ineligible")
+            elif b is not None and not b.eligible:
+                reasons.append("became eligible")
+            per_supplier.append(SupplierImpact(
+                supplier_id=sid,
+                eligible_before=b.eligible if b else False, eligible_after=a.eligible if a else False,
+                landed_before=b.landed_cost if b else Decimal(0), landed_after=a.landed_cost if a else Decimal(0),
+                score_before=b.total_score if b else 0.0, score_after=a.total_score if a else 0.0,
+                reasons=reasons))
+        top = recommended_id(run.scorecards)
+        impact = ReplanImpact(
+            from_version=ctx.from_version, to_version=ctx.to_version, changes=ctx.changes, per_supplier=per_supplier,
+            recommended_before=ctx.recommended, recommended_after=top,
+            summary_lines=explain_diff(ctx.scorecards, run.scorecards))
+        run.replan_impact = impact
+        if top is None and run.recommendation is not None:
+            run.recommendation.escalation = Escalation(
+                reason="no_eligible_supplier",
+                details={"per_supplier": {s.supplier_id: s.reasons for s in per_supplier}})
+        if ctx.recommended != top:
+            headline = f"Recommendation changed: {ctx.recommended or 'none'} → {top or 'none eligible'}"
+        else:
+            headline = f"Recommendation unchanged: {top or 'none eligible'}"
+        ineligible = [s.supplier_id for s in per_supplier if s.eligible_before and not s.eligible_after]
+        self._emit(run, EventActor.ENGINE, "replan.completed",
+                   f"Replan v{ctx.from_version} → v{ctx.to_version} complete. {headline}"
+                   + (f"; {', '.join(ineligible)} no longer eligible" if ineligible else "")
+                   + ("; ESCALATION: no eligible supplier" if top is None else ""),
+                   {"impact": _json(impact), "escalation": _json(run.recommendation.escalation)
+                    if run.recommendation and run.recommendation.escalation else None})
+
+    def _changes_line(self, ctx: _Replan) -> str:
+        return f"Request changed (v{ctx.from_version} → v{ctx.to_version}): " + "; ".join(
+            f"{k.replace('_', ' ')} {self._fmt(c.before)} → {self._fmt(c.after)}" for k, c in ctx.changes.items()) + "."
+
+    @staticmethod
+    def _fmt(value: Any) -> str:
+        return f"{value:,}" if isinstance(value, int) else f"{value:,.2f}" if isinstance(value, Decimal) else str(value)
 
     # ------------------------------------------------------------------ negotiation internals
 
@@ -487,15 +641,20 @@ class Orchestrator:
     def _evaluate(self, run: Run) -> None:
         # VALIDATING: cost + checks (no profiles yet)
         self._transition(run, S.VALIDATING, EventActor.ENGINE, "validation.started",
-                         f"Validating {len(run.quotes)} quote(s) at {run.request.quantity:,} units")
-        result = self.engine(run.request, run.config, run.quotes, {})
+                         f"Validating {len(run.quotes)} quote(s) at {run.request.quantity:,} units"
+                         + (f" (request v{run.request.version})" if run.request.version > 1 else ""))
+        # After a replan the human already resolved every mismatch (G1); the confirmed totals are authoritative
+        # and must not re-trigger the gate at the new quantity.
+        replan = self._replans.get(run.run_id)
+        result = self.engine(run.request, run.config, run.quotes, {},
+                             include_math_mismatch=bool(replan and replan.math_resolved))
         run.validated = result.validated
         self._emit(run, EventActor.ENGINE, "quotes.validated",
                    "; ".join(f"{v.supplier_id} landed {v.landed_cost}" for v in run.validated),
                    {"validated": _json(run.validated)})
         if result.stopped_for_math_mismatch:
             details = {
-                v.quote_id: {"supplier_id": v.supplier_id, "computed_pre_tax_total": str(v.pre_tax_total),
+                v.quote_id: {"supplier_id": v.supplier_id, "computed_pre_tax_total": str(self._quoted_total(v)),
                              "stated_total": str(v.llm_stated_total)}
                 for v in run.validated if v.quote_id in result.stopped_for_math_mismatch
             }
@@ -532,7 +691,11 @@ class Orchestrator:
                              before: list[Scorecard] | None = None) -> None:
         """engine → quotes.scored → RECOMMENDED → decision agent explanation. `before` (previous
         scorecards) turns on the engine diff and its change_explanation (re-score / replan)."""
-        result = self.engine(run.request, run.config, run.quotes, profiles)
+        replan = self._replans.get(run.run_id)
+        if before is None and replan is not None:
+            before = replan.scorecards or None
+        result = self.engine(run.request, run.config, run.quotes, profiles,
+                             include_math_mismatch=bool(replan and replan.math_resolved))
         run.validated, run.scorecards = result.validated, result.scorecards
         ranked = [c.supplier_id for c in run.scorecards]
         self._emit(run, EventActor.ENGINE, "quotes.scored",
@@ -545,6 +708,8 @@ class Orchestrator:
         self._transition(run, S.RECOMMENDED, EventActor.ENGINE, "recommendation.ranked",
                          f"Recommended supplier: {top or 'none eligible'}", {"recommended_supplier_id": top, "ranked": ranked})
         diff_lines = explain_diff(before, run.scorecards) if before is not None else None
+        if replan is not None:  # lead the change explanation with what the human changed
+            diff_lines = [self._changes_line(replan)] + (diff_lines or [])
         self._agent_started(run, "decision", "Explaining the ranking" + (" and what changed" if diff_lines else ""))
         explanation = self.agents["decision"].explain(run.request, run.scorecards, run.validated, diff_lines)
         run.recommendation = Recommendation(
@@ -554,6 +719,9 @@ class Orchestrator:
                              {"recommendation": _json(run.recommendation), "diff": diff_lines})
         self._emit(run, EventActor.ENGINE, "recommendation.ready", f"Recommendation stored for {top or 'no supplier'}",
                    {"recommendation": _json(run.recommendation)})
+        if replan is not None:
+            del self._replans[run.run_id]
+            self._finish_replan(run, replan)
 
     # ------------------------------------------------------------------ helpers
 
@@ -561,6 +729,11 @@ class Orchestrator:
         if run.state not in allowed:
             raise WorkflowError("illegal_transition",
                                 f"{action} not allowed in state {run.state}; expected one of {sorted(s.value for s in allowed)}")
+
+    @staticmethod
+    def _quoted_total(quote: NormalizedQuote) -> Decimal:
+        """Engine pre-tax total for the quantity and unit price the document itself quotes (what G1 compares)."""
+        return pre_tax_total(quote, quote.quantity_quoted, unit_price=quote.unit_price)[2]
 
     def _quote_index(self, run: Run, quote_id: str) -> int:
         for i, q in enumerate(run.quotes):

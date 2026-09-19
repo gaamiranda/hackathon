@@ -1,6 +1,7 @@
 """HTTP layer in mock mode (TestClient, no network)."""
 
 import json
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,9 @@ from procureai.api.app import app
 ROOT = Path(__file__).resolve().parents[2]
 SYNTHETIC = ROOT / "data" / "synthetic"
 DOCS = ["supplier_a_apex.pdf", "supplier_b_borealis.xlsx", "supplier_c_cobalt.eml.txt"]
-REQUEST = {"product": "Product X", "quantity": 2000, "required_by": "2026-09-29", "budget": "30000.00", "currency": "USD"}
+# required_by is relative so Apex (13 d lead time) stays eligible whatever day the suite runs (created_at is "now").
+REQUEST = {"product": "Product X", "quantity": 2000, "required_by": (date.today() + timedelta(days=14)).isoformat(),
+           "budget": "30000.00", "currency": "USD"}
 
 
 @pytest.fixture
@@ -289,3 +292,79 @@ def test_sse_replays_negotiation_events(client):
         assert t in types, t
     assert types.count("supplier.counter_offer") == 4 and types.count("negotiation.closed") == 2
     assert types[-1] == "recommendation.ready"
+
+
+def negotiated(client: TestClient) -> str:
+    """recommended() plus the whole negotiation loop auto-approved (B and C settled, B still first)."""
+    run_id = recommended(client)
+    run = client.post(f"/runs/{run_id}/negotiate").json()
+    while run["state"] == "AWAITING_NEGOTIATION_APPROVAL":
+        run = client.post(f"/runs/{run_id}/negotiation/{run['pending_human']['details']['supplier_id']}/approve", json={}).json()
+    assert run["state"] == "RECOMMENDED" and run["recommendation"]["recommended_supplier_id"] == "sup_b"
+    return run_id
+
+
+def test_interrupt_over_http_flips_recommendation(client):
+    run_id = negotiated(client)
+    body = {"quantity": 5000, "budget": "75000", "reason": "Customer order upsized"}
+    r = client.post(f"/runs/{run_id}/interrupt", json=body)
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "RECOMMENDED" and run["request"]["version"] == 2 and run["request"]["quantity"] == 5000
+    assert run["request"]["budget"] == "75000.00" and run["pending_human"] is None
+    assert [h["version"] for h in run["request_history"]] == [1] and run["request_history"][0]["quantity"] == 2000
+    assert run["recommendation"]["recommended_supplier_id"] == "sup_c"
+    assert [c["supplier_id"] for c in run["scorecards"]] == ["sup_c", "sup_a", "sup_b"]
+    b = next(c for c in run["scorecards"] if c["supplier_id"] == "sup_b")
+    assert not b["eligible"] and "capacity" in b["ineligibility_reasons"][0]
+    impact = run["replan_impact"]
+    assert impact["from_version"] == 1 and impact["to_version"] == 2
+    assert impact["recommended_before"] == "sup_b" and impact["recommended_after"] == "sup_c"
+    assert impact["changes"] == {"quantity": {"before": 2000, "after": 5000}, "budget": {"before": "30000.00", "after": "75000.00"}}
+    assert {s["supplier_id"]: s["eligible_after"] for s in impact["per_supplier"]} == {"sup_a": True, "sup_b": False, "sup_c": True}
+    assert "capacity" in run["recommendation"]["change_explanation"]
+    assert next(q for q in run["quotes"] if q["supplier_id"] == "sup_b")["negotiated_offer"] == {"unit_price": "12.40", "lead_time_days": 10}
+    assert client.get(f"/runs/{run_id}").json()["replan_impact"] == impact
+
+    types = [e["type"] for e in client.get(f"/runs/{run_id}/events").json()]
+    order = [t for t in types if t in ("requirement.changed", "replan.started", "replan.completed")]
+    assert order == ["requirement.changed", "replan.started", "replan.completed"]
+    assert types[-1] == "replan.completed"
+    changed = next(e for e in client.get(f"/runs/{run_id}/events").json() if e["type"] == "requirement.changed")
+    assert changed["actor"] == "human" and changed["payload"]["reason"] == "Customer order upsized"
+
+
+def test_interrupt_errors_over_http(client):
+    run_id = create(client)
+    r = client.post(f"/runs/{run_id}/interrupt", json={"quantity": 5000})
+    assert r.status_code == 409 and r.json()["code"] == "illegal_transition"
+    assert client.post("/runs/run-nope/interrupt", json={"quantity": 5000}).status_code == 404
+    assert client.post(f"/runs/{run_id}/interrupt", json={"quantity": 0}).status_code == 422
+
+    run_id = recommended(client)
+    for body in ({}, {"quantity": 2000}, {"reason": "nothing"}, {"budget": "30000.00"}):
+        r = client.post(f"/runs/{run_id}/interrupt", json=body)
+        assert r.status_code == 409 and r.json()["code"] == "no_change", body
+    assert client.get(f"/runs/{run_id}").json()["request"]["version"] == 1
+
+
+def test_interrupt_while_awaiting_approval_over_http(client):
+    run_id = recommended(client)
+    run = client.post(f"/runs/{run_id}/negotiate").json()
+    assert run["state"] == "AWAITING_NEGOTIATION_APPROVAL"
+    r = client.post(f"/runs/{run_id}/interrupt", json={"quantity": 5000, "budget": "75000"})
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "RECOMMENDED" and run["pending_human"] is None
+    assert run["negotiations"]["sup_b"]["status"] == "closed"
+    types = [e["type"] for e in client.get(f"/runs/{run_id}/events").json()]
+    assert "negotiation.discarded" in types and types.index("negotiation.discarded") < types.index("replan.started")
+    assert run["recommendation"]["recommended_supplier_id"] == "sup_c"
+
+
+def test_interrupt_without_budget_escalates(client):
+    run_id = negotiated(client)
+    run = client.post(f"/runs/{run_id}/interrupt", json={"quantity": 5000}).json()
+    assert run["state"] == "RECOMMENDED" and run["recommendation"]["recommended_supplier_id"] is None
+    assert run["recommendation"]["escalation"]["reason"] == "no_eligible_supplier"
+    assert all(not c["eligible"] for c in run["scorecards"])

@@ -1,4 +1,4 @@
-# ProcureAI frontend — War Room (Week 2)
+# ProcureAI frontend — War Room (Week 3)
 
 Vite + React 18 + TypeScript + Tailwind v4. Hooks only, no state library. Two routes:
 `/` (run list + new run) and `/runs/:id` (request & documents · live agent timeline · decision).
@@ -44,6 +44,26 @@ Backend: `cd backend && uv run uvicorn procureai.api.app:app --reload` (mock mod
    the engine re-scores, and **What changed** appears under the recommendation: Borealis landed
    27,618.42 → 26,763.86, Cobalt 29,212.00 → 27,141.00, Borealis still first.
 
+### Interrupt → replan (Week 3, D22)
+
+10. In the Request panel, the red **Inject change** section is now enabled (it appears in RECOMMENDED, EXTRACTED and
+    AWAITING_NEGOTIATION_APPROVAL). Click the preset **Demo: 2,000 → 5,000 units, budget 75,000**: it only fills the
+    fields (quantity 5000, budget 75000.00, reason "Customer order upsized"); nothing is sent yet.
+11. Click **Inject requirement change**. The timeline shows `requirement.changed` (human, red), `replan.started`
+    (RECOMMENDED → REPLANNING, with the chips capacity · moq · pricing · budget · risk), then the agents revisit the
+    existing quotes without re-extraction: validation at 5,000 units, supplier history, scoring, and
+    `replan.completed` ("Recommendation changed: sup_b → sup_c; sup_b no longer eligible").
+12. The Decision panel opens with the **Replan impact** card: Quantity 2,000 → 5,000, Budget 30,000 → 75,000, the banner
+    **Recommendation changed: Borealis Manufacturing AS → Cobalt Industrial**, the per-supplier table (Borealis eligible
+    yes → no, "quantity 5000 exceeds capacity 4000"; landed 26,763.86 → 66,500.90; score 66.3 → 0.0) and the change
+    explanation. The ranking below is Cobalt 62.9, Apex 58.6, Borealis ineligible; both negotiated offers are still
+    applied. The request header shows **v2** and "1 previous version" expands to the v1 request.
+
+Variants: inject quantity 5000 without raising the budget → every supplier is over budget, the recommendation shows
+**Escalation: no eligible supplier** and the run stays in RECOMMENDED for the human to decide. Injecting while a
+negotiation draft is pending (use **set aside ▾** on the dialog to reach the form) discards the unsent draft
+(`negotiation.discarded`) before replanning. Cobalt can then be negotiated after the replan (**Start negotiation**).
+
 Guardrail check: at any negotiation dialog, append `Apex offered us better terms.` to the draft and click
 **Approve & Send**. The backend answers 422 `policy_violation`; the reasons ("mentions other supplier 'Apex'…")
 appear in red under the textarea, the dialog stays open, nothing was sent (the timeline logs
@@ -62,14 +82,16 @@ update the TS type by hand (no codegen step yet). Money fields are strings ("12.
 
 ```
 src/
-  api/client.ts         typed fetch wrappers for every backend route + SSE URL; ApiError.violations on 422 policy_violation
+  api/client.ts         typed fetch wrappers for every backend route (incl. interrupt) + SSE URL; ApiError.violations on 422 policy_violation
   api/types.ts          Run, WorkflowEvent, Scorecard, Recommendation, PendingHuman, NormalizedQuote, NegotiationThread, …
   hooks/useEventStream  EventSource with replay-on-connect and reconnect(since=last seq)
   pages/RunListPage     GET /runs + POST /runs form
-  pages/RunPage         3-column layout, run state, refetch rules (recommendation.ready, *.needs_human, calc.mismatch,
-                        extraction.completed, negotiation.awaiting_approval, negotiation.closed), human gates
-  components/           RequestPanel (upload, quotes, Evaluate), TimelinePanel (negotiation events with offer chips),
-                        DecisionPanel (ranking, Start negotiation, per-supplier threads, What changed),
-                        HumanGate (extraction, calc_mismatch, negotiation_approval), StateBadge, Panel
+  pages/RunPage         3-column layout, run state + version badge, refetch rules (recommendation.ready, *.needs_human,
+                        calc.mismatch, extraction.completed, negotiation.awaiting_approval, negotiation.closed,
+                        requirement.changed, replan.completed), human gates
+  components/           RequestPanel (upload, quotes, Evaluate, Inject change with demo preset, previous versions),
+                        TimelinePanel (negotiation events with offer chips; requirement.changed / replan.* / negotiation.discarded),
+                        DecisionPanel (Replan impact card, ranking, Start negotiation, per-supplier threads, What changed),
+                        HumanGate (extraction, calc_mismatch, negotiation_approval with "set aside"), StateBadge, Panel
   format.ts             money(string) formatting without float parsing
 ```

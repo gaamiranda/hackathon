@@ -250,6 +250,41 @@ class Recommendation(StrictModel):
 
 
 # --------------------------------------------------------------------------- #
+# Replan (interrupt, D22)
+# --------------------------------------------------------------------------- #
+
+
+class FieldChange(StrictModel):
+    before: Any
+    after: Any
+
+
+class SupplierImpact(StrictModel):
+    """One supplier's scorecard before vs after a replan; `reasons` explains eligibility/ranking changes."""
+
+    supplier_id: str
+    eligible_before: bool
+    eligible_after: bool
+    landed_before: Money
+    landed_after: Money
+    score_before: float
+    score_after: float
+    reasons: list[str] = Field(default_factory=list)
+
+
+class ReplanImpact(StrictModel):
+    """Structured diff produced by an interrupt: request v{from} → v{to}, per-supplier effects, engine summary."""
+
+    from_version: int = Field(ge=1)
+    to_version: int = Field(ge=1)
+    changes: dict[str, FieldChange] = Field(description="request field → {before, after}")
+    per_supplier: list[SupplierImpact] = Field(default_factory=list)
+    recommended_before: str | None = None
+    recommended_after: str | None = None
+    summary_lines: list[str] = Field(default_factory=list, description="engine.diff.explain_diff output")
+
+
+# --------------------------------------------------------------------------- #
 # Negotiation
 # --------------------------------------------------------------------------- #
 
@@ -355,6 +390,10 @@ class Run(StrictModel):
     recommendation: Recommendation | None = None
     negotiations: dict[str, NegotiationThread] = Field(default_factory=dict, description="supplier_id → thread")
     pending_human: PendingHuman | None = None
+    request_history: list[ProcurementRequest] = Field(
+        default_factory=list, description="Previous request versions, oldest first (one per interrupt, D22)"
+    )
+    replan_impact: ReplanImpact | None = Field(default=None, description="Diff of the last replan; None before any interrupt")
     created_at: datetime
     updated_at: datetime
 

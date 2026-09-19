@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { NegotiationOffer, NegotiationStatus, NegotiationThread, NegotiationTurn, Run, Scorecard, WorkflowEvent } from '../api/types'
+import type { NegotiationOffer, NegotiationStatus, NegotiationThread, NegotiationTurn, ReplanImpact, Run, Scorecard, WorkflowEvent } from '../api/types'
 import { money, time } from '../format'
 import { Button, ErrorLine, Panel } from './Panel'
 
@@ -41,6 +41,8 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
 
   return (
     <Panel title="Decision">
+      {run.replan_impact && <ReplanImpactCard impact={run.replan_impact} names={names} explanation={rec?.change_explanation ?? null} />}
+
       {run.scorecards.length === 0 ? (
         <p className="text-sm text-zinc-500">No scorecards yet. Upload quotes and evaluate.</p>
       ) : (
@@ -100,7 +102,7 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Rationale</h3>
             <p className="mt-1 leading-relaxed text-zinc-200">{rec.rationale}</p>
           </div>
-          {rec.change_explanation && (
+          {rec.change_explanation && !run.replan_impact && (
             <div>
               <h3 className="text-xs uppercase tracking-wider text-zinc-500">What changed</h3>
               <p className="mt-1 leading-relaxed text-amber-100">{rec.change_explanation}</p>
@@ -134,7 +136,11 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
               </table>
             </div>
           )}
-          {rec.escalation && <p className="rounded border border-amber-800 bg-amber-950/50 p-2 text-amber-200">Escalation: {rec.escalation.reason}</p>}
+          {rec.escalation && (
+            <p className="rounded border border-amber-800 bg-amber-950/50 p-2 text-amber-200">
+              Escalation: {rec.escalation.reason.replace(/_/g, ' ')} — a human must decide (relax the requirement, add quotes, or re-negotiate).
+            </p>
+          )}
         </div>
       )}
 
@@ -163,6 +169,111 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
         </div>
       )}
     </Panel>
+  )
+}
+
+const FIELD_LABEL: Record<string, string> = { quantity: 'Quantity', budget: 'Budget', required_by: 'Required by' }
+
+function changeValue(field: string, v: unknown): string {
+  if (typeof v === 'number') return v.toLocaleString()
+  if (field === 'budget' && typeof v === 'string') return money(v)
+  return String(v)
+}
+
+/** Structured outcome of an interrupt (D22): what the human changed, what it did to every supplier, and why the
+ *  recommendation moved. Numbers are the engine's; the explanation is the Decision Agent's summary of the diff. */
+function ReplanImpactCard({ impact, names, explanation }: { impact: ReplanImpact; names: Record<string, string>; explanation: string | null }) {
+  const flipped = impact.recommended_before !== impact.recommended_after
+  const label = (sid: string | null) => (sid ? (names[sid] ?? sid) : 'none eligible')
+  return (
+    <div className="mb-4 rounded border border-red-800/70 bg-red-950/20 p-3 text-sm">
+      <div className="flex items-baseline justify-between">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-red-300">Replan impact</h3>
+        <span className="mono text-[10px] text-zinc-500">
+          request v{impact.from_version} → v{impact.to_version}
+        </span>
+      </div>
+      <ul className="mono mt-2 space-y-0.5 text-xs">
+        {Object.entries(impact.changes).map(([field, c]) => (
+          <li key={field}>
+            <span className="text-zinc-500">{FIELD_LABEL[field] ?? field}</span> <span className="text-zinc-400">{changeValue(field, c.before)}</span>
+            <span className="text-zinc-500"> → </span>
+            <span className="font-semibold text-red-200">{changeValue(field, c.after)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className={`mt-2 rounded px-2 py-1.5 text-sm font-semibold ${flipped ? 'bg-red-900/50 text-red-100 ring-1 ring-red-500' : 'bg-zinc-800/80 text-zinc-200'}`}>
+        {flipped ? (
+          <>
+            Recommendation changed: {label(impact.recommended_before)} → {label(impact.recommended_after)}
+          </>
+        ) : (
+          <>Recommendation unchanged: {label(impact.recommended_after)}</>
+        )}
+      </div>
+      {/* before → after per supplier; "before" values sit on their own line so the table fits the 420px column */}
+      <table className="mono mt-2 w-full table-fixed text-xs">
+        <colgroup>
+          <col className="w-[34%]" />
+          <col className="w-[18%]" />
+          <col className="w-[30%]" />
+          <col className="w-[18%]" />
+        </colgroup>
+        <thead className="text-[10px] uppercase text-zinc-500">
+          <tr>
+            <th className="text-left font-normal">supplier</th>
+            <th className="text-left font-normal">eligible</th>
+            <th className="text-right font-normal">landed</th>
+            <th className="text-right font-normal">score</th>
+          </tr>
+        </thead>
+        <tbody>
+          {impact.per_supplier.map((s) => {
+            const lost = s.eligible_before && !s.eligible_after
+            const gained = !s.eligible_before && s.eligible_after
+            return (
+              <tr key={s.supplier_id} className="border-t border-zinc-800/60 align-top">
+                <td className="py-1 pr-1 text-zinc-300">
+                  <div className="truncate" title={names[s.supplier_id] ?? s.supplier_id}>
+                    {names[s.supplier_id] ?? s.supplier_id}
+                  </div>
+                  <div className="text-[10px] text-zinc-600">{s.supplier_id}</div>
+                </td>
+                <td className="py-1">
+                  <div className="text-zinc-500">{s.eligible_before ? 'yes' : 'no'} →</div>
+                  <div className={lost ? 'font-semibold text-red-300' : gained ? 'font-semibold text-emerald-300' : 'text-zinc-200'}>{s.eligible_after ? 'yes' : 'no'}</div>
+                </td>
+                <td className="py-1 text-right">
+                  <div className="text-zinc-500">{money(s.landed_before)} →</div>
+                  <div className="text-zinc-200">{money(s.landed_after)}</div>
+                </td>
+                <td className="py-1 text-right">
+                  <div className="text-zinc-500">{s.score_before.toFixed(1)} →</div>
+                  <div className={s.score_after > s.score_before ? 'text-emerald-300' : s.score_after < s.score_before ? 'text-red-300' : 'text-zinc-200'}>{s.score_after.toFixed(1)}</div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+      {impact.per_supplier.some((s) => s.reasons.length > 0) && (
+        <ul className="mt-1.5 space-y-0.5 text-[11px]">
+          {impact.per_supplier
+            .filter((s) => s.reasons.length > 0)
+            .map((s) => (
+              <li key={s.supplier_id} className={s.eligible_before && !s.eligible_after ? 'text-red-300' : 'text-zinc-400'}>
+                <span className="mono">{s.supplier_id}</span>: {s.reasons.join('; ')}
+              </li>
+            ))}
+        </ul>
+      )}
+      {explanation && (
+        <div className="mt-2">
+          <h4 className="text-[10px] uppercase tracking-wider text-zinc-500">Change explanation</h4>
+          <p className="mt-0.5 leading-relaxed text-amber-100">{explanation}</p>
+        </div>
+      )}
+    </div>
   )
 }
 

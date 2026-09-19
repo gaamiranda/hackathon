@@ -36,6 +36,23 @@
       "title": "Escalation",
       "type": "object"
     },
+    "FieldChange": {
+      "additionalProperties": false,
+      "properties": {
+        "before": {
+          "title": "Before"
+        },
+        "after": {
+          "title": "After"
+        }
+      },
+      "required": [
+        "before",
+        "after"
+      ],
+      "title": "FieldChange",
+      "type": "object"
+    },
     "NegotiationBoundaries": {
       "additionalProperties": false,
       "properties": {
@@ -727,6 +744,76 @@
       "title": "Recommendation",
       "type": "object"
     },
+    "ReplanImpact": {
+      "additionalProperties": false,
+      "description": "Structured diff produced by an interrupt: request v{from} \u2192 v{to}, per-supplier effects, engine summary.",
+      "properties": {
+        "from_version": {
+          "minimum": 1,
+          "title": "From Version",
+          "type": "integer"
+        },
+        "to_version": {
+          "minimum": 1,
+          "title": "To Version",
+          "type": "integer"
+        },
+        "changes": {
+          "additionalProperties": {
+            "$ref": "#/$defs/FieldChange"
+          },
+          "description": "request field \u2192 {before, after}",
+          "title": "Changes",
+          "type": "object"
+        },
+        "per_supplier": {
+          "items": {
+            "$ref": "#/$defs/SupplierImpact"
+          },
+          "title": "Per Supplier",
+          "type": "array"
+        },
+        "recommended_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended Before"
+        },
+        "recommended_after": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recommended After"
+        },
+        "summary_lines": {
+          "description": "engine.diff.explain_diff output",
+          "items": {
+            "type": "string"
+          },
+          "title": "Summary Lines",
+          "type": "array"
+        }
+      },
+      "required": [
+        "from_version",
+        "to_version",
+        "changes"
+      ],
+      "title": "ReplanImpact",
+      "type": "object"
+    },
     "Scorecard": {
       "additionalProperties": false,
       "properties": {
@@ -837,6 +924,76 @@
         "risk"
       ],
       "title": "ScoringWeights",
+      "type": "object"
+    },
+    "SupplierImpact": {
+      "additionalProperties": false,
+      "description": "One supplier's scorecard before vs after a replan; `reasons` explains eligibility/ranking changes.",
+      "properties": {
+        "supplier_id": {
+          "title": "Supplier Id",
+          "type": "string"
+        },
+        "eligible_before": {
+          "title": "Eligible Before",
+          "type": "boolean"
+        },
+        "eligible_after": {
+          "title": "Eligible After",
+          "type": "boolean"
+        },
+        "landed_before": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Landed Before"
+        },
+        "landed_after": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Landed After"
+        },
+        "score_before": {
+          "title": "Score Before",
+          "type": "number"
+        },
+        "score_after": {
+          "title": "Score After",
+          "type": "number"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "supplier_id",
+        "eligible_before",
+        "eligible_after",
+        "landed_before",
+        "landed_after",
+        "score_before",
+        "score_after"
+      ],
+      "title": "SupplierImpact",
       "type": "object"
     },
     "Thresholds": {
@@ -1257,6 +1414,26 @@
         }
       ],
       "default": null
+    },
+    "request_history": {
+      "description": "Previous request versions, oldest first (one per interrupt, D22)",
+      "items": {
+        "$ref": "#/$defs/ProcurementRequest"
+      },
+      "title": "Request History",
+      "type": "array"
+    },
+    "replan_impact": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReplanImpact"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Diff of the last replan; None before any interrupt"
     },
     "created_at": {
       "format": "date-time",

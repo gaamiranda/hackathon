@@ -15,6 +15,7 @@ const TONE: Partial<Record<WorkflowState, string>> = {
   NEGOTIATING: 'bg-pink-900/60 text-pink-200',
   COUNTER_RECEIVED: 'bg-pink-900/60 text-pink-200',
   RE_SCORING: 'bg-violet-900/60 text-violet-200',
+  REPLANNING: 'bg-red-900/70 text-red-200 ring-1 ring-red-500',
 }
 
 export function StateBadge({ state, size = 'sm' }: { state: WorkflowState; size?: 'sm' | 'lg' }) {

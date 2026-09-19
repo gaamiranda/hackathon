@@ -16,6 +16,8 @@ const REFETCH_ON = new Set([
   'extraction.completed',
   'negotiation.awaiting_approval',
   'negotiation.closed',
+  'requirement.changed',
+  'replan.completed',
 ])
 
 export function RunPage() {
@@ -76,6 +78,11 @@ export function RunPage() {
         <span className="text-zinc-300">
           {run.request.quantity.toLocaleString()} × {run.request.product}
         </span>
+        {run.request.version > 1 && (
+          <span className="mono rounded bg-red-900/60 px-1.5 text-xs font-semibold text-red-200" title="request version (incremented by every interrupt)">
+            v{run.request.version}
+          </span>
+        )}
         {error && <span className="ml-auto text-xs text-red-300">{error}</span>}
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)_420px] gap-3 p-3">

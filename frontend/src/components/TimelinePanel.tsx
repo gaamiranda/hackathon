@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { EventActor, NegotiationOffer, WorkflowEvent, WorkflowState } from '../api/types'
 import type { StreamStatus } from '../hooks/useEventStream'
-import { time } from '../format'
+import { money, time } from '../format'
 import { Panel } from './Panel'
 import { StateBadge } from './StateBadge'
 
@@ -59,20 +59,46 @@ function offerOf(payload: Record<string, unknown>): NegotiationOffer | null {
   return o && typeof o.unit_price === 'string' && typeof o.lead_time_days === 'number' ? (o as NegotiationOffer) : null
 }
 
+/** Interrupt / replan events (T13, D22): the human's change and the engine's replan get a red accent. */
+const REPLAN_TYPES = new Set(['requirement.changed', 'replan.started', 'replan.completed', 'negotiation.discarded'])
+
+const CHANGE_LABEL: Record<string, string> = { quantity: 'quantity', budget: 'budget', required_by: 'required by' }
+
+function changesOf(payload: Record<string, unknown>): [string, { before: unknown; after: unknown }][] {
+  const c = payload.changes
+  if (!c || typeof c !== 'object') return []
+  return Object.entries(c as Record<string, { before: unknown; after: unknown }>).filter(([, v]) => v && typeof v === 'object')
+}
+
+function fmtChange(field: string, v: unknown): string {
+  if (typeof v === 'number') return v.toLocaleString()
+  return field === 'budget' && typeof v === 'string' ? money(v) : String(v)
+}
+
 function EventRow({ event }: { event: WorkflowEvent }) {
   const [open, setOpen] = useState(false)
   const a = ACTOR[event.actor]
   const transition = event.state_before !== event.state_after
   const agent = typeof event.payload.agent === 'string' ? (event.payload.agent as string) : null
-  const negotiation = isNegotiation(event.type)
+  const replan = REPLAN_TYPES.has(event.type)
+  const negotiation = !replan && isNegotiation(event.type)
   const offer = negotiation ? offerOf(event.payload) : null
   const blocked = event.type === 'negotiation.policy_blocked'
   const counter = event.type === 'supplier.counter_offer'
   const violations = blocked && Array.isArray(event.payload.violations) ? (event.payload.violations as string[]) : []
   const replyText = counter && typeof event.payload.reply_text === 'string' ? (event.payload.reply_text as string) : null
-  const accent = blocked ? 'border-l-2 border-l-red-500' : counter ? 'border-l-2 border-l-pink-400' : negotiation ? 'border-l-2 border-l-amber-400' : ''
+  const accent = replan || blocked ? 'border-l-2 border-l-red-500' : counter ? 'border-l-2 border-l-pink-400' : negotiation ? 'border-l-2 border-l-amber-400' : ''
+  const changes = event.type === 'requirement.changed' ? changesOf(event.payload) : []
+  const reason = event.type === 'requirement.changed' && typeof event.payload.reason === 'string' ? (event.payload.reason as string) : ''
+  const revisiting = event.type === 'replan.started' && Array.isArray(event.payload.revisiting) ? (event.payload.revisiting as string[]) : []
+  const impact = event.type === 'replan.completed' ? (event.payload.impact as { recommended_before?: string | null; recommended_after?: string | null } | undefined) : undefined
+  const discarded = event.type === 'negotiation.discarded'
   return (
-    <li className={`rounded border px-3 py-2 text-sm ${transition ? 'border-zinc-700 bg-zinc-900' : 'border-zinc-800/60 bg-zinc-950/40'} ${accent}`}>
+    <li
+      className={`rounded border px-3 py-2 text-sm ${
+        event.type === 'requirement.changed' ? 'border-red-800 bg-red-950/30' : transition ? 'border-zinc-700 bg-zinc-900' : 'border-zinc-800/60 bg-zinc-950/40'
+      } ${accent}`}
+    >
       <div className="flex items-start gap-2">
         <span className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${a.dot}`} />
         <div className="min-w-0 flex-1">
@@ -87,7 +113,41 @@ function EventRow({ event }: { event: WorkflowEvent }) {
               </span>
             )}
           </div>
-          <p className="mt-0.5 break-words text-zinc-200">{event.summary}</p>
+          {event.type === 'requirement.changed' ? (
+            <div className="mt-0.5">
+              <p className="font-semibold text-red-200">Requirement changed by human</p>
+              <ul className="mono mt-0.5 flex flex-wrap gap-1.5 text-[11px]">
+                {changes.map(([field, c]) => (
+                  <li key={field} className="rounded bg-red-900/50 px-1.5 py-0.5 text-red-100">
+                    {CHANGE_LABEL[field] ?? field} {fmtChange(field, c.before)} → <span className="font-semibold">{fmtChange(field, c.after)}</span>
+                  </li>
+                ))}
+              </ul>
+              {reason && <p className="mt-1 text-xs italic text-zinc-300">“{reason}”</p>}
+            </div>
+          ) : event.type === 'replan.started' ? (
+            <div className="mt-0.5">
+              <p className="text-zinc-200">Replanning without restart on the existing quotes — revisiting:</p>
+              <ul className="mono mt-0.5 flex flex-wrap gap-1.5 text-[11px]">
+                {revisiting.map((r) => (
+                  <li key={r} className="rounded bg-sky-900/50 px-1.5 py-0.5 text-sky-100">
+                    {r.replace('_', ' ')}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : event.type === 'replan.completed' ? (
+            <p className="mt-0.5 break-words">
+              <span className={impact && impact.recommended_before !== impact.recommended_after ? 'font-semibold text-red-200' : 'text-zinc-200'}>{event.summary}</span>
+            </p>
+          ) : discarded ? (
+            <p className="mt-0.5 break-words text-zinc-300">
+              <span className="mr-1 rounded bg-red-900/50 px-1.5 py-0.5 text-[11px] text-red-100">draft discarded</span>
+              {event.summary}
+            </p>
+          ) : (
+            <p className="mt-0.5 break-words text-zinc-200">{event.summary}</p>
+          )}
           {negotiation && (offer || typeof event.payload.round === 'number') && (
             <div className="mono mt-1 flex flex-wrap gap-1.5 text-[11px]">
               {typeof event.payload.supplier_id === 'string' && <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-zinc-300">{event.payload.supplier_id}</span>}

@@ -7,7 +7,22 @@ import { Button, ErrorLine } from './Panel'
 /** Human gates (PLAN.md G1/G5/G6): rendered from run.pending_human.kind. */
 export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
   const pending = run.pending_human
+  // A negotiation draft can be set aside to reach the Request panel (e.g. to inject a requirement change, D22);
+  // the pending draft stays on the backend and the bar below reopens it. Keyed per draft so a new one pops up.
+  const [minimised, setMinimised] = useState<string | null>(null)
   if (!pending) return null
+  const draftKey = pending.kind === 'negotiation_approval' ? `${pending.details.supplier_id}-${pending.details.round}` : null
+  if (draftKey && minimised === draftKey) {
+    return (
+      <div className="fixed bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-lg border border-amber-700 bg-zinc-900 px-4 py-2 text-sm shadow-2xl">
+        <span className="text-amber-300">Negotiation draft awaiting your approval</span>
+        <span className="text-zinc-500">— nothing is sent while it waits</span>
+        <Button tone="ghost" onClick={() => setMinimised(null)}>
+          Reopen
+        </Button>
+      </div>
+    )
+  }
   let body
   if (pending.kind === 'calc_mismatch') body = <MismatchGate run={run} onRun={onRun} />
   else if (pending.kind === 'negotiation_approval') {
@@ -18,7 +33,14 @@ export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void })
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
       <div className="w-full max-w-2xl rounded-lg border border-amber-700 bg-zinc-900 p-5 shadow-2xl">
-        <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-amber-400">Human review required · {pending.kind}</div>
+        <div className="mb-1 flex items-baseline justify-between">
+          <span className="text-xs font-semibold uppercase tracking-widest text-amber-400">Human review required · {pending.kind}</span>
+          {draftKey && (
+            <button type="button" onClick={() => setMinimised(draftKey)} className="text-xs text-zinc-500 hover:text-zinc-300" title="set the draft aside (e.g. to inject a requirement change); it stays pending">
+              set aside ▾
+            </button>
+          )}
+        </div>
         <p className="mb-4 text-sm text-zinc-300">{pending.message}</p>
         {body}
       </div>

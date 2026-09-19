@@ -5,6 +5,7 @@ Usage: cd backend && uv run python scripts/demo_week1.py [http://127.0.0.1:8000]
 
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 import httpx
@@ -20,7 +21,9 @@ def main(base_url: str) -> tuple[httpx.Client, str, dict]:
     print("health:", c.get("/health").json())
 
     fixture = json.loads((FIXTURES / "ProcurementRequest.json").read_text())
-    body = {"request": {k: fixture[k] for k in ("product", "quantity", "required_by", "budget", "currency")}}
+    body = {"request": {k: fixture[k] for k in ("product", "quantity", "budget", "currency")}}
+    # The fixture's fixed date drifts past the suppliers' lead times; keep the 14-day window relative to today.
+    body["request"]["required_by"] = (date.today() + timedelta(days=14)).isoformat()
     created = c.post("/runs", json=body).raise_for_status().json()
     run_id = created["run_id"]
     print(f"run {run_id} created: state={created['run']['state']}")

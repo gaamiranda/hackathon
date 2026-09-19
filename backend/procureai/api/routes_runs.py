@@ -80,6 +80,15 @@ class ApproveNegotiationBody(BaseModel):
     message: str | None = Field(default=None, description="Edited draft; omit to send the agent's draft unchanged")
 
 
+class InterruptBody(BaseModel):
+    """Mid-workflow requirement change (D22); at least one of the three fields must differ from the current request."""
+
+    quantity: int | None = Field(default=None, gt=0)
+    budget: Money | None = None
+    required_by: date | None = None
+    reason: str = ""
+
+
 def default_config() -> ProcurementConfig:
     return ProcurementConfig.model_validate_json(DEFAULT_CONFIG_PATH.read_text())
 
@@ -213,6 +222,15 @@ def approve_negotiation(run_id: str, supplier_id: str, body: ApproveNegotiationB
         violations = [v for v in exc.message.split("; ") if v]
         return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                             content={"code": exc.code, "message": exc.message, "violations": violations})
+
+
+@router.post("/{run_id}/interrupt", response_model=Run)
+def interrupt(run_id: str, body: InterruptBody, orch: Orchestrator = Depends(get_orchestrator)) -> Run:
+    """Requirement change → REPLANNING → re-validate / re-enrich / re-score the existing quotes → RECOMMENDED
+    with run.replan_impact. 409 illegal_transition outside RECOMMENDED | EXTRACTED | AWAITING_NEGOTIATION_APPROVAL,
+    409 no_change when nothing differs."""
+    return orch.interrupt(run_id, quantity=body.quantity, budget=body.budget, required_by=body.required_by,
+                          reason=body.reason)
 
 
 @router.get("/{run_id}/negotiations", response_model=dict[str, NegotiationThread])
