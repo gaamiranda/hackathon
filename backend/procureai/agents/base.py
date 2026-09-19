@@ -1,8 +1,11 @@
 """Agent protocols (PLAN.md §3). Every agent has a mock and, later, an LLM-backed implementation (D3)."""
 
-from typing import Protocol, TypedDict, runtime_checkable
+from typing import Literal, Protocol, TypedDict, runtime_checkable
 
 from procureai.domain.models import (
+    NegotiationBoundaries,
+    NegotiationOffer,
+    NegotiationThread,
     NormalizedQuote,
     ProcurementRequest,
     RawDocument,
@@ -18,6 +21,14 @@ CRITICAL_FIELDS = ("unit_price", "currency", "moq", "lead_time_days", "quantity_
 class Explanation(TypedDict):
     rationale: str
     change_explanation: str | None
+
+
+class NegotiationDraft(TypedDict):
+    message: str
+    target_offer: NegotiationOffer
+
+
+CounterVerdict = Literal["accept", "counter", "close"]
 
 
 @runtime_checkable
@@ -56,14 +67,45 @@ class DecisionAgent(Protocol):
         ...
 
 
+@runtime_checkable
 class NegotiationAgent(Protocol):
-    """Drafts price/lead-time negotiation messages within boundaries (Week 2, D7)."""
+    """Drafts price/lead-time negotiation messages within boundaries (D7, D17).
 
-    def draft(self, *args, **kwargs):  # pragma: no cover - defined in a later task
-        raise NotImplementedError("NegotiationAgent arrives with the Week 2 negotiation task")
+    The agent never sees other suppliers' quotes; the workflow still runs every draft through
+    engine.policy.check_outbound_message and enforces the round limit itself (G2, G3).
+    """
+
+    def draft(
+        self,
+        request: ProcurementRequest,
+        quote: NormalizedQuote,
+        thread: NegotiationThread,
+        boundaries: NegotiationBoundaries,
+    ) -> NegotiationDraft:
+        """Next buyer message to this supplier plus the target offer it asks for.
+
+        Target: unit_price = current × (1 − default_ask_pct/100), never below the
+        max_discount_ask_pct envelope on the original; lead time = max(min_lead_time_days, current − 2).
+        The message addresses this supplier only and mentions only its own prices and the target.
+        """
+        ...
+
+    def evaluate_counter(
+        self,
+        thread: NegotiationThread,
+        counter: NegotiationOffer | None,
+        boundaries: NegotiationBoundaries,
+    ) -> CounterVerdict:
+        """"accept" | "counter" | "close" for the supplier's latest reply (None = rejected).
+
+        Decides from offers only, never from the reply text (untrusted, G4). The workflow
+        ignores "counter" once the round limit is reached.
+        """
+        ...
 
 
 class AgentSet(TypedDict):
     document: DocumentAgent
     supplier_intel: SupplierIntelAgent
     decision: DecisionAgent
+    negotiation: NegotiationAgent

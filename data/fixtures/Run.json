@@ -23,9 +23,11 @@
       "tie_margin": 2.0
     },
     "negotiation": {
-      "max_discount_ask_pct": "5",
-      "min_lead_time_days": 5,
-      "max_rounds": 2
+      "default_ask_pct": "8",
+      "max_discount_ask_pct": "10",
+      "min_lead_time_days": 7,
+      "max_rounds": 2,
+      "negotiate_top_n": 2
     },
     "approvals": {
       "negotiation_send": true,
@@ -83,7 +85,8 @@
         "validity_date": 1.0,
         "capacity_units": 1.0
       },
-      "raw_excerpt": ""
+      "raw_excerpt": "",
+      "negotiated_offer": null
     },
     {
       "quote_id": "BOR-2026-0418",
@@ -113,7 +116,8 @@
         "validity_date": 1.0,
         "capacity_units": 1.0
       },
-      "raw_excerpt": ""
+      "raw_excerpt": "",
+      "negotiated_offer": null
     },
     {
       "quote_id": "CI-Q-7731",
@@ -143,7 +147,8 @@
         "validity_date": 1.0,
         "capacity_units": 1.0
       },
-      "raw_excerpt": ""
+      "raw_excerpt": "",
+      "negotiated_offer": null
     }
   ],
   "validated": [
@@ -189,7 +194,9 @@
         "math_ok": true,
         "capacity_ok": true
       },
-      "issues": []
+      "issues": [],
+      "negotiated_offer": null,
+      "negotiated": false
     },
     {
       "quote_id": "BOR-2026-0418",
@@ -233,7 +240,9 @@
         "math_ok": true,
         "capacity_ok": true
       },
-      "issues": []
+      "issues": [],
+      "negotiated_offer": null,
+      "negotiated": false
     },
     {
       "quote_id": "CI-Q-7731",
@@ -277,7 +286,9 @@
         "math_ok": true,
         "capacity_ok": true
       },
-      "issues": []
+      "issues": [],
+      "negotiated_offer": null,
+      "negotiated": false
     }
   ],
   "scorecards": [
@@ -343,6 +354,7 @@
     "change_explanation": null,
     "escalation": null
   },
+  "negotiations": {},
   "pending_human": null,
   "created_at": "2026-09-15T09:00:01Z",
   "updated_at": "2026-09-15T09:01:02Z"

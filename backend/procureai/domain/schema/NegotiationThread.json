@@ -3,6 +3,22 @@
     "NegotiationBoundaries": {
       "additionalProperties": false,
       "properties": {
+        "default_ask_pct": {
+          "anyOf": [
+            {
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "8",
+          "description": "Opening ask: unit_price \u00d7 (1 \u2212 pct/100) (D17)",
+          "title": "Default Ask Pct"
+        },
         "max_discount_ask_pct": {
           "anyOf": [
             {
@@ -15,9 +31,11 @@
               "type": "string"
             }
           ],
+          "default": "10",
           "title": "Max Discount Ask Pct"
         },
         "min_lead_time_days": {
+          "default": 7,
           "minimum": 0,
           "title": "Min Lead Time Days",
           "type": "integer"
@@ -29,12 +47,15 @@
           "minimum": 1,
           "title": "Max Rounds",
           "type": "integer"
+        },
+        "negotiate_top_n": {
+          "default": 2,
+          "description": "Negotiate with the top N eligible suppliers, sequentially (D17)",
+          "minimum": 1,
+          "title": "Negotiate Top N",
+          "type": "integer"
         }
       },
-      "required": [
-        "max_discount_ask_pct",
-        "min_lead_time_days"
-      ],
       "title": "NegotiationBoundaries",
       "type": "object"
     },
@@ -151,6 +172,30 @@
     },
     "boundaries": {
       "$ref": "#/$defs/NegotiationBoundaries"
+    },
+    "original_offer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NegotiationOffer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Supplier's quoted price/lead time before negotiation"
+    },
+    "current_offer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NegotiationOffer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Supplier's latest standing offer"
     }
   },
   "required": [

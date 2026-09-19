@@ -1,9 +1,13 @@
-"""Week 1 straight-line pipeline (PLAN.md §2 state machine, §17 gates G1/G6).
+"""Workflow state machine (PLAN.md §2, §17 gates G1/G2/G3/G5/G6).
 
 CREATED → EXTRACTING → [NEEDS_HUMAN_EXTRACTION] → EXTRACTED → VALIDATING → [CALC_MISMATCH]
         → ENRICHING → SCORING → RECOMMENDED
+        → (per supplier, top negotiate_top_n, sequentially; ≤ max_rounds buyer turns each)
+          NEGOTIATION_DRAFTED → AWAITING_NEGOTIATION_APPROVAL → NEGOTIATING → COUNTER_RECEIVED
+        → RE_SCORING → RECOMMENDED
 
-The orchestrator owns state and calls agents/engine; it never does arithmetic.
+The orchestrator owns state and calls agents/engine; it never does arithmetic. Negotiation
+guardrails live here, not in the agent: the round limit (G2) and the outbound leakage filter (G3).
 """
 
 from collections.abc import Callable
@@ -14,6 +18,11 @@ from uuid import uuid4
 from procureai.agents.base import CRITICAL_FIELDS, AgentSet
 from procureai.domain.models import (
     EventActor,
+    NegotiationOffer,
+    NegotiationRole,
+    NegotiationStatus,
+    NegotiationThread,
+    NegotiationTurn,
     NormalizedQuote,
     PendingHuman,
     PendingHumanKind,
@@ -22,10 +31,23 @@ from procureai.domain.models import (
     RawDocument,
     Recommendation,
     Run,
+    Scorecard,
     SupplierProfile,
     WorkflowState,
 )
-from procureai.engine import EvaluationResult, evaluate, recommended_id
+from procureai.engine import (
+    EvaluationResult,
+    can_open_turn,
+    check_negotiation_bounds,
+    check_outbound_message,
+    effective_lead_time_days,
+    effective_unit_price,
+    evaluate,
+    explain_diff,
+    recommended_id,
+)
+from procureai.engine.policy import buyer_turns
+from procureai.sim import ScriptedSupplier, SupplierSim
 from procureai.workflow.errors import WorkflowError
 from procureai.workflow.events import EventBus
 from procureai.workflow.store import RunStore
@@ -49,6 +71,7 @@ class Orchestrator:
         engine: EngineFn = evaluate,
         now: Callable[[], datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
+        supplier: SupplierSim | None = None,
     ) -> None:
         self.agents = agents
         self.store = store
@@ -56,6 +79,7 @@ class Orchestrator:
         self.events = events or EventBus(store, now=self.now)
         self.engine = engine
         self.new_id = id_factory or (lambda: f"run-{uuid4().hex[:8]}")
+        self.supplier = supplier or ScriptedSupplier()
 
     # ------------------------------------------------------------------ public API
 
@@ -176,6 +200,231 @@ class Orchestrator:
                 self._evaluate(run)
             return self._save(run)
 
+    def start_negotiation(self, run_id: str) -> Run:
+        """RECOMMENDED → draft for the best eligible supplier → AWAITING_NEGOTIATION_APPROVAL.
+
+        Targets are the top `negotiate_top_n` eligible suppliers by score, handled one at a
+        time (D17). Each draft passes the outbound policy filter before the human gate (G3, G5)."""
+        with self.store.lock:
+            run = self.store.get(run_id)
+            self._require(run, {S.RECOMMENDED}, "start_negotiation")
+            targets = self._negotiation_targets(run)
+            if not targets:
+                raise WorkflowError("nothing_to_negotiate", "no eligible supplier without a settled negotiation thread")
+            b = run.config.negotiation
+            self._emit(run, EventActor.ENGINE, "negotiation.started",
+                       f"Negotiating with {', '.join(targets)} (top {b.negotiate_top_n} eligible, one at a time, "
+                       f"max {b.max_rounds} rounds each)",
+                       {"supplier_ids": targets, "boundaries": _json(b)})
+            if not self._open_thread(run, targets[0]):
+                raise WorkflowError("policy_violation", f"draft to {targets[0]} blocked by the outbound policy filter")
+            return self._save(run)
+
+    def approve_negotiation(self, run_id: str, supplier_id: str, message: str | None = None) -> Run:
+        """Human approves the pending draft (optionally edited; edits are re-filtered, G3), which is
+        then "sent" to the simulated supplier. The counter is recorded, evaluated and either
+        answered with another draft (within the round limit, G2) or settled; when every target
+        supplier is settled the run re-scores with the negotiated offers → RECOMMENDED."""
+        with self.store.lock:
+            run = self.store.get(run_id)
+            self._require(run, {S.AWAITING_NEGOTIATION_APPROVAL}, "approve_negotiation")
+            pending = run.pending_human
+            if (pending is None or pending.kind != PendingHumanKind.NEGOTIATION_APPROVAL
+                    or pending.details.get("supplier_id") != supplier_id):
+                raise WorkflowError("not_pending", f"no negotiation draft awaiting approval for {supplier_id!r}")
+            thread = run.negotiations[supplier_id]
+            quote = self._quote_for_supplier(run, supplier_id)
+            target = NegotiationOffer.model_validate(pending.details["target_offer"])
+            round_no = pending.details["round"]
+            text = pending.details["draft"] if message is None else message
+            edited = text != pending.details["draft"]
+            if edited:
+                policy = self._check_outbound(run, quote, thread, text, target)
+                if not policy.ok:
+                    self._emit(run, EventActor.HUMAN, "negotiation.policy_blocked",
+                               f"Edited message to {supplier_id} blocked: " + "; ".join(policy.violations),
+                               {"supplier_id": supplier_id, "round": round_no, "offer": _json(target),
+                                "violations": policy.violations, "source": "human_edit"})
+                    raise WorkflowError("policy_violation", "; ".join(policy.violations))
+            if not can_open_turn(thread, thread.boundaries):  # G2, enforced here regardless of the agent
+                raise WorkflowError("round_limit", f"{supplier_id}: {thread.boundaries.max_rounds} buyer turns already used")
+
+            thread.turns.append(NegotiationTurn(role=NegotiationRole.BUYER, message=text, offer=target,
+                                                approved_by_human=True, ts=self.now()))
+            run.pending_human = None
+            self._transition(run, S.NEGOTIATING, EventActor.HUMAN, "negotiation.sent",
+                             f"Round {round_no} message to {supplier_id} approved{' (edited)' if edited else ''} and sent",
+                             {"supplier_id": supplier_id, "round": round_no, "offer": _json(target),
+                              "message": text, "edited": edited})
+
+            reply = self.supplier.reply(supplier_id, round_no)
+            # Reply text is untrusted supplier content: stored verbatim, never interpreted (G4).
+            thread.turns.append(NegotiationTurn(role=NegotiationRole.SUPPLIER, message=reply.reply_text,
+                                                offer=reply.offer, ts=self.now()))
+            if reply.offer is not None:
+                thread.current_offer = reply.offer
+            self._transition(run, S.COUNTER_RECEIVED, EventActor.SUPPLIER, "supplier.counter_offer",
+                             f"{supplier_id} round {round_no}: " + (
+                                 f"counter {reply.offer.unit_price}/unit, {reply.offer.lead_time_days} d"
+                                 if reply.offer else "no counter-offer (rejected)"),
+                             {"supplier_id": supplier_id, "round": round_no,
+                              "offer": _json(reply.offer) if reply.offer else None, "reply_text": reply.reply_text})
+            self._settle_round(run, thread, quote, reply.offer, round_no)
+            return self._save(run)
+
+    # ------------------------------------------------------------------ negotiation internals
+
+    def _negotiation_targets(self, run: Run) -> list[str]:
+        """Top negotiate_top_n eligible suppliers (current ranking) that have no thread yet."""
+        top = [c.supplier_id for c in run.scorecards if c.eligible][: run.config.negotiation.negotiate_top_n]
+        return [sid for sid in top if sid not in run.negotiations]
+
+    def _open_thread(self, run: Run, supplier_id: str) -> bool:
+        quote = self._quote_for_supplier(run, supplier_id)
+        offer = NegotiationOffer(unit_price=effective_unit_price(quote), lead_time_days=effective_lead_time_days(quote))
+        thread = NegotiationThread(run_id=run.run_id, supplier_id=supplier_id, boundaries=run.config.negotiation,
+                                   original_offer=offer, current_offer=offer)
+        run.negotiations[supplier_id] = thread
+        return self._draft_turn(run, thread, quote)
+
+    def _draft_turn(self, run: Run, thread: NegotiationThread, quote: NormalizedQuote) -> bool:
+        """Agent drafts → envelope + leakage filter → NEGOTIATION_DRAFTED → AWAITING_NEGOTIATION_APPROVAL.
+        Returns False (thread escalated, negotiation.policy_blocked emitted) when the draft is blocked."""
+        sid, b = thread.supplier_id, thread.boundaries
+        round_no = buyer_turns(thread) + 1
+        self._agent_started(run, "negotiation", f"Drafting round {round_no} message to {sid}",
+                            {"supplier_id": sid, "round": round_no})
+        draft = self.agents["negotiation"].draft(run.request, quote, thread, b)
+        target = draft["target_offer"]
+        violations = check_negotiation_bounds(thread.original_offer or target, target, b).violations
+        violations += self._check_outbound(run, quote, thread, draft["message"], target).violations
+        if violations:
+            thread.status = NegotiationStatus.ESCALATED
+            self._emit(run, EventActor.AGENT, "negotiation.policy_blocked",
+                       f"Draft to {sid} blocked: " + "; ".join(violations),
+                       {"supplier_id": sid, "round": round_no, "offer": _json(target),
+                        "violations": violations, "source": "agent_draft"})
+            return False
+        self._agent_finished(run, "negotiation", f"Draft ready: ask {target.unit_price}/unit, {target.lead_time_days} d",
+                             {"supplier_id": sid, "round": round_no, "offer": _json(target)})
+        self._transition(run, S.NEGOTIATION_DRAFTED, EventActor.AGENT, "negotiation.drafted",
+                         f"Round {round_no} draft for {sid} passed the outbound policy filter",
+                         {"supplier_id": sid, "round": round_no, "offer": _json(target), "draft": draft["message"]})
+        run.pending_human = PendingHuman(
+            kind=PendingHumanKind.NEGOTIATION_APPROVAL, quote_ids=[quote.quote_id],
+            message=f"Approve round {round_no} negotiation message to {quote.supplier_name}",
+            details={"supplier_id": sid, "round": round_no, "draft": draft["message"],
+                     "target_offer": _json(target), "boundaries": _json(b)})
+        self._transition(run, S.AWAITING_NEGOTIATION_APPROVAL, EventActor.ENGINE, "negotiation.awaiting_approval",
+                         run.pending_human.message,
+                         {"supplier_id": sid, "round": round_no, "offer": _json(target), "pending_human": _json(run.pending_human)})
+        return True
+
+    def _settle_round(self, run: Run, thread: NegotiationThread, quote: NormalizedQuote,
+                      counter: NegotiationOffer | None, round_no: int) -> None:
+        sid, b = thread.supplier_id, thread.boundaries
+        self._agent_started(run, "negotiation", f"Evaluating {sid}'s round {round_no} reply",
+                            {"supplier_id": sid, "round": round_no})
+        verdict = self.agents["negotiation"].evaluate_counter(thread, counter, b)
+        if verdict == "counter" and not can_open_turn(thread, b):  # G2: the agent cannot open a third turn
+            verdict = "close"
+        if verdict == "accept" and counter is None:
+            verdict = "close"
+        self._agent_finished(run, "negotiation", f"Verdict on {sid} round {round_no}: {verdict}",
+                             {"supplier_id": sid, "round": round_no, "offer": _json(counter) if counter else None,
+                              "verdict": verdict})
+        self._emit(run, EventActor.ENGINE, "negotiation.round_completed",
+                   f"{sid} round {round_no} completed: {verdict}"
+                   + (f" ({buyer_turns(thread)}/{b.max_rounds} buyer turns used)" if verdict != "accept" else ""),
+                   {"supplier_id": sid, "round": round_no, "offer": _json(counter) if counter else None,
+                    "verdict": verdict, "buyer_turns": buyer_turns(thread)})
+        if verdict == "counter":
+            if self._draft_turn(run, thread, quote):
+                return
+            self._close_thread(run, thread, quote, round_no, NegotiationStatus.ESCALATED)
+        elif verdict == "accept":
+            self._close_thread(run, thread, quote, round_no, NegotiationStatus.ACCEPTED, counter)
+        else:
+            self._close_thread(run, thread, quote, round_no, NegotiationStatus.CLOSED)
+        self._continue_negotiation(run)
+
+    def _close_thread(self, run: Run, thread: NegotiationThread, quote: NormalizedQuote, round_no: int,
+                      status: NegotiationStatus, applied: NegotiationOffer | None = None) -> None:
+        """Settle the thread; apply `applied` (or, when closing, the best offer received if it
+        improves on the original) as the quote's negotiated_offer."""
+        sid = thread.supplier_id
+        if applied is None:
+            applied = self._best_received(thread)
+        thread.status = status
+        if applied is not None:
+            thread.current_offer = applied
+            idx = self._quote_index(run, quote.quote_id)
+            run.quotes[idx] = quote.model_copy(update={"negotiated_offer": applied})
+        original = thread.original_offer
+        summary = f"{sid} thread {status}: " + (
+            f"negotiated {applied.unit_price}/unit, {applied.lead_time_days} d "
+            f"(was {original.unit_price}/unit, {original.lead_time_days} d)" if applied and original
+            else "no improvement obtained; quoted terms stand")
+        self._emit(run, EventActor.ENGINE, "negotiation.closed", summary,
+                   {"supplier_id": sid, "round": round_no, "status": status, "offer": _json(applied) if applied else None,
+                    "original_offer": _json(original) if original else None, "buyer_turns": buyer_turns(thread)})
+
+    def _best_received(self, thread: NegotiationThread) -> NegotiationOffer | None:
+        """Lowest price, then shortest lead time, among supplier offers that improve on the original."""
+        original = thread.original_offer
+        offers = [t.offer for t in thread.turns if t.role == NegotiationRole.SUPPLIER and t.offer is not None]
+        if original is not None:
+            offers = [o for o in offers if o.unit_price < original.unit_price or o.lead_time_days < original.lead_time_days]
+        return min(offers, key=lambda o: (o.unit_price, o.lead_time_days), default=None)
+
+    def _continue_negotiation(self, run: Run) -> None:
+        """Next target supplier, or re-score once every target thread is settled."""
+        for sid in self._negotiation_targets(run):
+            if self._open_thread(run, sid):
+                return
+        self._rescore(run)
+
+    def _rescore(self, run: Run) -> None:
+        before = list(run.scorecards)
+        negotiated = {q.supplier_id: _json(q.negotiated_offer) for q in run.quotes if q.negotiated_offer}
+        self._transition(run, S.RE_SCORING, EventActor.ENGINE, "rescoring.started",
+                         "Re-scoring with negotiated offers from " + (", ".join(negotiated) or "no supplier"),
+                         {"negotiated": negotiated})
+        self._score_and_recommend(run, self._profiles(run), before)
+
+    def _check_outbound(self, run: Run, quote: NormalizedQuote, thread: NegotiationThread, text: str,
+                        target: NegotiationOffer):
+        """Leakage filter (G3): only this supplier's own figures and the target may appear."""
+        profiles = self._profiles(run)
+        for q in run.quotes:  # suppliers without history still must not be named
+            profiles.setdefault(q.supplier_id, SupplierProfile(
+                supplier_id=q.supplier_id, name=q.supplier_name, on_time_rate=0.0, defect_rate=0.0,
+                orders_completed=0, avg_lead_time_days=0, max_capacity_units=0))
+        allowed = {quote.unit_price, quote.shipping_cost, target.unit_price}
+        if quote.llm_stated_total is not None:
+            allowed.add(quote.llm_stated_total)
+        for v in run.validated:
+            if v.quote_id == quote.quote_id:
+                allowed |= {v.subtotal, v.discount, v.pre_tax_total, v.tax, v.landed_cost}
+        for offer in [thread.original_offer, thread.current_offer, *(t.offer for t in thread.turns)]:
+            if offer is not None:
+                allowed.add(offer.unit_price)
+        return check_outbound_message(text, profiles[quote.supplier_id], list(profiles.values()), allowed)
+
+    def _profiles(self, run: Run) -> dict[str, SupplierProfile]:
+        profiles: dict[str, SupplierProfile] = {}
+        for sid in sorted({q.supplier_id for q in run.quotes}):
+            profile = self.agents["supplier_intel"].get_profile(sid)
+            if profile:
+                profiles[sid] = profile
+        return profiles
+
+    def _quote_for_supplier(self, run: Run, supplier_id: str) -> NormalizedQuote:
+        for q in run.quotes:
+            if q.supplier_id == supplier_id:
+                return q
+        raise WorkflowError("quote_not_found", f"no quote from supplier {supplier_id!r} in run {run.run_id}")
+
     # ------------------------------------------------------------------ stages
 
     def _extract(self, run: Run, doc: RawDocument) -> None:
@@ -277,6 +526,12 @@ class Orchestrator:
 
         # SCORING
         self._transition(run, S.SCORING, EventActor.ENGINE, "scoring.started", "Scoring eligible quotes")
+        self._score_and_recommend(run, profiles)
+
+    def _score_and_recommend(self, run: Run, profiles: dict[str, SupplierProfile],
+                             before: list[Scorecard] | None = None) -> None:
+        """engine → quotes.scored → RECOMMENDED → decision agent explanation. `before` (previous
+        scorecards) turns on the engine diff and its change_explanation (re-score / replan)."""
         result = self.engine(run.request, run.config, run.quotes, profiles)
         run.validated, run.scorecards = result.validated, result.scorecards
         ranked = [c.supplier_id for c in run.scorecards]
@@ -289,12 +544,14 @@ class Orchestrator:
         top = recommended_id(run.scorecards)
         self._transition(run, S.RECOMMENDED, EventActor.ENGINE, "recommendation.ranked",
                          f"Recommended supplier: {top or 'none eligible'}", {"recommended_supplier_id": top, "ranked": ranked})
-        self._agent_started(run, "decision", "Explaining the ranking")
-        explanation = self.agents["decision"].explain(run.request, run.scorecards, run.validated, None)
+        diff_lines = explain_diff(before, run.scorecards) if before is not None else None
+        self._agent_started(run, "decision", "Explaining the ranking" + (" and what changed" if diff_lines else ""))
+        explanation = self.agents["decision"].explain(run.request, run.scorecards, run.validated, diff_lines)
         run.recommendation = Recommendation(
             run_id=run.run_id, request_version=run.request.version, ranked=ranked, recommended_supplier_id=top,
             rationale=explanation["rationale"], change_explanation=explanation["change_explanation"])
-        self._agent_finished(run, "decision", explanation["rationale"][:160], {"recommendation": _json(run.recommendation)})
+        self._agent_finished(run, "decision", explanation["rationale"][:160],
+                             {"recommendation": _json(run.recommendation), "diff": diff_lines})
         self._emit(run, EventActor.ENGINE, "recommendation.ready", f"Recommendation stored for {top or 'no supplier'}",
                    {"recommendation": _json(run.recommendation)})
 

@@ -39,6 +39,22 @@
     "NegotiationBoundaries": {
       "additionalProperties": false,
       "properties": {
+        "default_ask_pct": {
+          "anyOf": [
+            {
+              "maximum": 100.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "default": "8",
+          "description": "Opening ask: unit_price \u00d7 (1 \u2212 pct/100) (D17)",
+          "title": "Default Ask Pct"
+        },
         "max_discount_ask_pct": {
           "anyOf": [
             {
@@ -51,9 +67,11 @@
               "type": "string"
             }
           ],
+          "default": "10",
           "title": "Max Discount Ask Pct"
         },
         "min_lead_time_days": {
+          "default": 7,
           "minimum": 0,
           "title": "Min Lead Time Days",
           "type": "integer"
@@ -65,13 +83,163 @@
           "minimum": 1,
           "title": "Max Rounds",
           "type": "integer"
+        },
+        "negotiate_top_n": {
+          "default": 2,
+          "description": "Negotiate with the top N eligible suppliers, sequentially (D17)",
+          "minimum": 1,
+          "title": "Negotiate Top N",
+          "type": "integer"
+        }
+      },
+      "title": "NegotiationBoundaries",
+      "type": "object"
+    },
+    "NegotiationOffer": {
+      "additionalProperties": false,
+      "description": "Price and lead time only (D7).",
+      "properties": {
+        "unit_price": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        },
+        "lead_time_days": {
+          "minimum": 0,
+          "title": "Lead Time Days",
+          "type": "integer"
         }
       },
       "required": [
-        "max_discount_ask_pct",
-        "min_lead_time_days"
+        "unit_price",
+        "lead_time_days"
       ],
-      "title": "NegotiationBoundaries",
+      "title": "NegotiationOffer",
+      "type": "object"
+    },
+    "NegotiationRole": {
+      "enum": [
+        "buyer",
+        "supplier"
+      ],
+      "title": "NegotiationRole",
+      "type": "string"
+    },
+    "NegotiationStatus": {
+      "enum": [
+        "open",
+        "accepted",
+        "rejected",
+        "escalated",
+        "closed"
+      ],
+      "title": "NegotiationStatus",
+      "type": "string"
+    },
+    "NegotiationThread": {
+      "additionalProperties": false,
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "supplier_id": {
+          "title": "Supplier Id",
+          "type": "string"
+        },
+        "turns": {
+          "items": {
+            "$ref": "#/$defs/NegotiationTurn"
+          },
+          "title": "Turns",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/NegotiationStatus",
+          "default": "open"
+        },
+        "boundaries": {
+          "$ref": "#/$defs/NegotiationBoundaries"
+        },
+        "original_offer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NegotiationOffer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Supplier's quoted price/lead time before negotiation"
+        },
+        "current_offer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NegotiationOffer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Supplier's latest standing offer"
+        }
+      },
+      "required": [
+        "run_id",
+        "supplier_id",
+        "boundaries"
+      ],
+      "title": "NegotiationThread",
+      "type": "object"
+    },
+    "NegotiationTurn": {
+      "additionalProperties": false,
+      "properties": {
+        "role": {
+          "$ref": "#/$defs/NegotiationRole"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "offer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NegotiationOffer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "approved_by_human": {
+          "default": false,
+          "title": "Approved By Human",
+          "type": "boolean"
+        },
+        "ts": {
+          "format": "date-time",
+          "title": "Ts",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "message",
+        "ts"
+      ],
+      "title": "NegotiationTurn",
       "type": "object"
     },
     "NormalizedQuote": {
@@ -238,6 +406,18 @@
           "default": "",
           "title": "Raw Excerpt",
           "type": "string"
+        },
+        "negotiated_offer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NegotiationOffer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Accepted counter-offer; the engine costs with it, originals stay for audit (D17)"
         }
       },
       "required": [
@@ -288,7 +468,8 @@
     "PendingHumanKind": {
       "enum": [
         "extraction",
-        "calc_mismatch"
+        "calc_mismatch",
+        "negotiation_approval"
       ],
       "title": "PendingHumanKind",
       "type": "string"
@@ -851,6 +1032,18 @@
           "title": "Raw Excerpt",
           "type": "string"
         },
+        "negotiated_offer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NegotiationOffer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Accepted counter-offer; the engine costs with it, originals stay for audit (D17)"
+        },
         "subtotal": {
           "anyOf": [
             {
@@ -938,6 +1131,12 @@
           },
           "title": "Issues",
           "type": "array"
+        },
+        "negotiated": {
+          "default": false,
+          "description": "True when costed with negotiated_offer",
+          "title": "Negotiated",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1039,6 +1238,14 @@
         }
       ],
       "default": null
+    },
+    "negotiations": {
+      "additionalProperties": {
+        "$ref": "#/$defs/NegotiationThread"
+      },
+      "description": "supplier_id \u2192 thread",
+      "title": "Negotiations",
+      "type": "object"
     },
     "pending_human": {
       "anyOf": [

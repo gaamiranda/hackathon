@@ -114,9 +114,11 @@ class Thresholds(StrictModel):
 
 
 class NegotiationBoundaries(StrictModel):
-    max_discount_ask_pct: Percent
-    min_lead_time_days: int = Field(ge=0)
+    default_ask_pct: Percent = Field(default=Decimal("8"), description="Opening ask: unit_price × (1 − pct/100) (D17)")
+    max_discount_ask_pct: Percent = Decimal("10")
+    min_lead_time_days: int = Field(default=7, ge=0)
     max_rounds: int = Field(default=2, ge=1, le=2, description="Hard cap per supplier (G2)")
+    negotiate_top_n: int = Field(default=2, ge=1, description="Negotiate with the top N eligible suppliers, sequentially (D17)")
 
 
 class ApprovalRequirements(StrictModel):
@@ -146,6 +148,13 @@ class RawDocument(StrictModel):
     text: str
 
 
+class NegotiationOffer(StrictModel):
+    """Price and lead time only (D7)."""
+
+    unit_price: Money
+    lead_time_days: int = Field(ge=0)
+
+
 class NormalizedQuote(StrictModel):
     """Output of the Document Agent. Untrusted content, already structured."""
 
@@ -169,6 +178,9 @@ class NormalizedQuote(StrictModel):
     )
     field_confidence: dict[str, Ratio] = Field(default_factory=dict)
     raw_excerpt: str = ""
+    negotiated_offer: NegotiationOffer | None = Field(
+        default=None, description="Accepted counter-offer; the engine costs with it, originals stay for audit (D17)"
+    )
 
 
 class QuoteChecks(StrictModel):
@@ -190,6 +202,7 @@ class ValidatedQuote(NormalizedQuote):
     landed_cost: Money
     checks: QuoteChecks
     issues: list[str] = Field(default_factory=list)
+    negotiated: bool = Field(default=False, description="True when costed with negotiated_offer")
 
 
 # --------------------------------------------------------------------------- #
@@ -241,13 +254,6 @@ class Recommendation(StrictModel):
 # --------------------------------------------------------------------------- #
 
 
-class NegotiationOffer(StrictModel):
-    """Price and lead time only (D7)."""
-
-    unit_price: Money
-    lead_time_days: int = Field(ge=0)
-
-
 class NegotiationTurn(StrictModel):
     role: NegotiationRole
     message: str
@@ -262,6 +268,8 @@ class NegotiationThread(StrictModel):
     turns: list[NegotiationTurn] = Field(default_factory=list)
     status: NegotiationStatus = NegotiationStatus.OPEN
     boundaries: NegotiationBoundaries
+    original_offer: NegotiationOffer | None = Field(default=None, description="Supplier's quoted price/lead time before negotiation")
+    current_offer: NegotiationOffer | None = Field(default=None, description="Supplier's latest standing offer")
 
 
 # --------------------------------------------------------------------------- #
@@ -325,6 +333,7 @@ class PurchaseOrder(StrictModel):
 class PendingHumanKind(StrEnum):
     EXTRACTION = "extraction"  # low-confidence / missing critical fields
     CALC_MISMATCH = "calc_mismatch"  # stated total != computed total (G1)
+    NEGOTIATION_APPROVAL = "negotiation_approval"  # outbound negotiation draft awaiting a human (G5)
 
 
 class PendingHuman(StrictModel):
@@ -344,6 +353,7 @@ class Run(StrictModel):
     validated: list[ValidatedQuote] = Field(default_factory=list)
     scorecards: list[Scorecard] = Field(default_factory=list)
     recommendation: Recommendation | None = None
+    negotiations: dict[str, NegotiationThread] = Field(default_factory=dict, description="supplier_id → thread")
     pending_human: PendingHuman | None = None
     created_at: datetime
     updated_at: datetime

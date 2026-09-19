@@ -25,8 +25,18 @@
   ],
   "status": "open",
   "boundaries": {
-    "max_discount_ask_pct": "5",
-    "min_lead_time_days": 5,
-    "max_rounds": 2
+    "default_ask_pct": "8",
+    "max_discount_ask_pct": "10",
+    "min_lead_time_days": 7,
+    "max_rounds": 2,
+    "negotiate_top_n": 2
+  },
+  "original_offer": {
+    "unit_price": "12.80",
+    "lead_time_days": 10
+  },
+  "current_offer": {
+    "unit_price": "12.60",
+    "lead_time_days": 9
   }
 }

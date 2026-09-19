@@ -13,7 +13,7 @@ from procureai.domain.models import (
     SupplierProfile,
     ValidatedQuote,
 )
-from procureai.engine.costing import compute_costs
+from procureai.engine.costing import compute_costs, effective_lead_time_days, effective_unit_price
 from procureai.engine.diff import explain_diff, recommended_id
 from procureai.engine.policy import (
     PolicyResult,
@@ -53,6 +53,8 @@ __all__ = [
     "check_negotiation_bounds",
     "check_outbound_message",
     "compute_costs",
+    "effective_lead_time_days",
+    "effective_unit_price",
     "evaluate",
     "explain_diff",
     "recommended_id",

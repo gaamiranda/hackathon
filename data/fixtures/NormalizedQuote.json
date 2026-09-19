@@ -24,5 +24,6 @@
     "shipping_cost": 0.93,
     "discount_pct": 0.91
   },
-  "raw_excerpt": "PX-2000 | Product X, industrial grade | 2000 | 12.8 | 25600.0 / Subtotal 25600.0 / Discount % 2 / Discount -512.0 / Shipping 250 / TOTAL (USD) 25338.0 / MOQ 1000 / Lead Time 10 / Net 45"
+  "raw_excerpt": "PX-2000 | Product X, industrial grade | 2000 | 12.8 | 25600.0 / Subtotal 25600.0 / Discount % 2 / Discount -512.0 / Shipping 250 / TOTAL (USD) 25338.0 / MOQ 1000 / Lead Time 10 / Net 45",
+  "negotiated_offer": null
 }

@@ -11,9 +11,11 @@
     "tie_margin": 2.0
   },
   "negotiation": {
-    "max_discount_ask_pct": "5",
-    "min_lead_time_days": 5,
-    "max_rounds": 2
+    "default_ask_pct": "8",
+    "max_discount_ask_pct": "10",
+    "min_lead_time_days": 7,
+    "max_rounds": 2,
+    "negotiate_top_n": 2
   },
   "approvals": {
     "negotiation_send": true,

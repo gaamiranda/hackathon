@@ -3,6 +3,10 @@
 All arithmetic is Decimal, rounded ROUND_HALF_UP to 2 dp after every step.
 The buyer's cost uses request.quantity; the math check uses quote.quantity_quoted
 because the supplier's printed total refers to the quantity they quoted.
+
+A quote with `negotiated_offer` is costed at the negotiated unit price and lead time
+(effective_unit_price / effective_lead_time_days, D17); the math check still uses
+the original price because the printed total predates the negotiation.
 """
 
 from datetime import date
@@ -25,14 +29,27 @@ def q2(value: Decimal) -> Decimal:
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def pre_tax_total(quote: NormalizedQuote, quantity: int) -> tuple[Decimal, Decimal, Decimal]:
+def effective_unit_price(quote: NormalizedQuote) -> Decimal:
+    """Negotiated unit price when a counter-offer was accepted, else the quoted one."""
+    return quote.negotiated_offer.unit_price if quote.negotiated_offer else quote.unit_price
+
+
+def effective_lead_time_days(quote: NormalizedQuote) -> int:
+    """Negotiated lead time when a counter-offer was accepted, else the quoted one."""
+    return quote.negotiated_offer.lead_time_days if quote.negotiated_offer else quote.lead_time_days
+
+
+def pre_tax_total(
+    quote: NormalizedQuote, quantity: int, unit_price: Decimal | None = None
+) -> tuple[Decimal, Decimal, Decimal]:
     """(subtotal, discount, pre_tax_total) for `quantity` units.
 
-    subtotal      = quantity × unit_price
+    subtotal      = quantity × unit_price (effective_unit_price unless given)
     discount      = subtotal × discount_pct / 100
     pre_tax_total = subtotal − discount + shipping_cost
     """
-    subtotal = q2(Decimal(quantity) * quote.unit_price)
+    price = effective_unit_price(quote) if unit_price is None else unit_price
+    subtotal = q2(Decimal(quantity) * price)
     discount = q2(subtotal * quote.discount_pct / Decimal(100))
     pre_tax = q2(subtotal - discount + quote.shipping_cost)
     return subtotal, discount, pre_tax
@@ -58,10 +75,10 @@ def compute_costs(
     landed_cost = pre_tax_total + tax
 
     Checks:
-      math_ok      |pre_tax_total(quantity_quoted) − llm_stated_total| ≤ 0.01
+      math_ok      |pre_tax_total(quantity_quoted, original unit_price) − llm_stated_total| ≤ 0.01
                    (no stated total → True, with issue "no stated total")
       moq_ok       request.quantity ≥ moq
-      lead_time_ok lead_time_days ≤ days_available(request)
+      lead_time_ok effective_lead_time_days ≤ days_available(request)
       budget_ok    landed_cost ≤ request.budget
       capacity_ok  request.quantity ≤ capacity_units (True when no capacity stated)
     """
@@ -75,7 +92,7 @@ def compute_costs(
         math_ok = True
         issues.append("no stated total on document; math check skipped")
     else:
-        _, _, quoted_pre_tax = pre_tax_total(quote, quote.quantity_quoted)
+        _, _, quoted_pre_tax = pre_tax_total(quote, quote.quantity_quoted, unit_price=quote.unit_price)
         math_ok = abs(quoted_pre_tax - quote.llm_stated_total) <= MATH_TOLERANCE
         if not math_ok:
             issues.append(
@@ -88,9 +105,10 @@ def compute_costs(
         issues.append(f"quantity {request.quantity} is below MOQ {quote.moq}")
 
     available = days_available(request)
-    lead_ok = quote.lead_time_days <= available
+    lead_time = effective_lead_time_days(quote)
+    lead_ok = lead_time <= available
     if not lead_ok:
-        issues.append(f"lead time {quote.lead_time_days} d exceeds the {available} d available")
+        issues.append(f"lead time {lead_time} d exceeds the {available} d available")
 
     budget_ok = landed <= request.budget
     if not budget_ok:
@@ -106,6 +124,12 @@ def compute_costs(
             "costs computed at requested quantity"
         )
 
+    if quote.negotiated_offer:
+        issues.append(
+            f"costed at negotiated {effective_unit_price(quote)}/unit, {lead_time} d "
+            f"(quoted {quote.unit_price}/unit, {quote.lead_time_days} d)"
+        )
+
     return ValidatedQuote(
         **quote.model_dump(),
         subtotal=subtotal,
@@ -118,4 +142,5 @@ def compute_costs(
             moq_ok=moq_ok, lead_time_ok=lead_ok, budget_ok=budget_ok, math_ok=math_ok, capacity_ok=cap_ok
         ),
         issues=issues,
+        negotiated=quote.negotiated_offer is not None,
     )

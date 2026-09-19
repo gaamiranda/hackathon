@@ -1,10 +1,15 @@
 """Deterministic mock agents backed by fixtures (PLAN.md D3). No LLM, no network."""
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
-from procureai.agents.base import Explanation
+from procureai.agents.base import CounterVerdict, Explanation, NegotiationDraft
 from procureai.domain.models import (
+    NegotiationBoundaries,
+    NegotiationOffer,
+    NegotiationRole,
+    NegotiationThread,
     NormalizedQuote,
     ProcurementRequest,
     RawDocument,
@@ -12,6 +17,8 @@ from procureai.domain.models import (
     SupplierProfile,
     ValidatedQuote,
 )
+from procureai.engine.costing import effective_lead_time_days, effective_unit_price, q2
+from procureai.engine.policy import buyer_turns, can_open_turn
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 SYNTHETIC_DIR = DATA_DIR / "synthetic"
@@ -110,3 +117,79 @@ class MockDecisionAgent:
 
         change = " ".join(diff_lines) if diff_lines else None
         return Explanation(rationale=" ".join(parts), change_explanation=change)
+
+
+class MockNegotiationAgent:
+    """Templated drafts and a fixed accept rule (D17). Sees one supplier's quote and thread only."""
+
+    LEAD_TIME_ASK_DAYS = 2
+
+    def draft(
+        self,
+        request: ProcurementRequest,
+        quote: NormalizedQuote,
+        thread: NegotiationThread,
+        boundaries: NegotiationBoundaries,
+    ) -> NegotiationDraft:
+        original = thread.original_offer or NegotiationOffer(
+            unit_price=effective_unit_price(quote), lead_time_days=effective_lead_time_days(quote))
+        current = thread.current_offer or original
+        ask = q2(current.unit_price * (1 - boundaries.default_ask_pct / Decimal(100)))
+        floor = q2(original.unit_price * (1 - boundaries.max_discount_ask_pct / Decimal(100)))
+        target = NegotiationOffer(
+            unit_price=min(current.unit_price, max(ask, floor)),
+            lead_time_days=min(current.lead_time_days,
+                               max(boundaries.min_lead_time_days, current.lead_time_days - self.LEAD_TIME_ASK_DAYS)),
+        )
+        cur = request.currency
+        if buyer_turns(thread) == 0:
+            opening = (
+                f"Thank you for quotation {quote.quote_id} for {request.quantity:,} units of {request.product} at "
+                f"{cur} {current.unit_price} per unit with a {current.lead_time_days}-day lead time. "
+                f"We would like to place this order with you, but to fit our plan we need a unit price of "
+                f"{cur} {target.unit_price} and delivery within {target.lead_time_days} days."
+            )
+        else:
+            opening = (
+                f"Thank you for your revised offer of {cur} {current.unit_price} per unit with a "
+                f"{current.lead_time_days}-day lead time; we appreciate the movement. To close this order today "
+                f"we would need {cur} {target.unit_price} per unit and delivery within {target.lead_time_days} days."
+            )
+        message = (
+            f"Dear {quote.supplier_name} team,\n\n{opening} Could you confirm whether you can meet these terms? "
+            "We are ready to confirm the order promptly on your reply.\n\nKind regards,\nProcurement Team"
+        )
+        return NegotiationDraft(message=message, target_offer=target)
+
+    def evaluate_counter(
+        self,
+        thread: NegotiationThread,
+        counter: NegotiationOffer | None,
+        boundaries: NegotiationBoundaries,
+    ) -> CounterVerdict:
+        """accept if the counter improves the price by ≥ half the ask or meets the lead-time target;
+        counter while another buyer turn is allowed; at the limit accept any price improvement,
+        else close (supplier rejected). Offers only — reply text is never read (G4)."""
+        target, baseline = self._last_ask(thread)
+        if counter is not None and target is not None:
+            half_ask = (baseline.unit_price - target.unit_price) / 2
+            if baseline.unit_price - counter.unit_price >= half_ask or counter.lead_time_days <= target.lead_time_days:
+                return "accept"
+        if can_open_turn(thread, boundaries):
+            return "counter"
+        if counter is not None and counter.unit_price < baseline.unit_price:
+            return "accept"
+        return "close"
+
+    @staticmethod
+    def _last_ask(thread: NegotiationThread) -> tuple[NegotiationOffer | None, NegotiationOffer]:
+        """(target of the last buyer turn, the supplier offer standing when that ask was made)."""
+        baseline = thread.original_offer or NegotiationOffer(unit_price=Decimal(0), lead_time_days=0)
+        last_buyer = next((i for i in range(len(thread.turns) - 1, -1, -1)
+                           if thread.turns[i].role == NegotiationRole.BUYER), None)
+        if last_buyer is None:
+            return None, baseline
+        for turn in thread.turns[:last_buyer]:
+            if turn.role == NegotiationRole.SUPPLIER and turn.offer is not None:
+                baseline = turn.offer
+        return thread.turns[last_buyer].offer, baseline

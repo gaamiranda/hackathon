@@ -1,5 +1,35 @@
 {
   "$defs": {
+    "NegotiationOffer": {
+      "additionalProperties": false,
+      "description": "Price and lead time only (D7).",
+      "properties": {
+        "unit_price": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+              "type": "string"
+            }
+          ],
+          "title": "Unit Price"
+        },
+        "lead_time_days": {
+          "minimum": 0,
+          "title": "Lead Time Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "unit_price",
+        "lead_time_days"
+      ],
+      "title": "NegotiationOffer",
+      "type": "object"
+    },
     "QuoteSource": {
       "enum": [
         "pdf",
@@ -173,6 +203,18 @@
       "default": "",
       "title": "Raw Excerpt",
       "type": "string"
+    },
+    "negotiated_offer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NegotiationOffer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Accepted counter-offer; the engine costs with it, originals stay for audit (D17)"
     }
   },
   "required": [

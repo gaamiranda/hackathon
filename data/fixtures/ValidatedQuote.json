@@ -38,5 +38,7 @@
     "math_ok": true,
     "capacity_ok": true
   },
-  "issues": []
+  "issues": [],
+  "negotiated_offer": null,
+  "negotiated": false
 }

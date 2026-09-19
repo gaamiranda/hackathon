@@ -11,6 +11,7 @@ from procureai.domain.models import (
     SupplierProfile,
     ValidatedQuote,
 )
+from procureai.engine.costing import effective_lead_time_days
 
 # Risk normalisation constants (see risk_score docstring).
 ON_TIME_FLOOR = 0.80  # on-time rate at/below this = maximum delivery risk
@@ -71,7 +72,7 @@ def ineligibility_reasons(
     if not vq.checks.moq_ok:
         reasons.append(f"below MOQ {vq.moq}")
     if not vq.checks.lead_time_ok:
-        reasons.append(f"lead time {vq.lead_time_days} d misses the deadline")
+        reasons.append(f"lead time {effective_lead_time_days(vq)} d misses the deadline")
     if not vq.checks.budget_ok:
         reasons.append(f"landed cost {vq.landed_cost} over budget {request.budget}")
     if not vq.checks.capacity_ok:
@@ -102,7 +103,7 @@ def score(
 
     For eligible quotes:
       price       = min-max over eligible landed_cost (cheapest → 100)
-      lead_time   = min-max over eligible lead_time_days (fastest → 100)
+      lead_time   = min-max over eligible effective lead time (negotiated when present; fastest → 100)
       reliability = reliability_score × 100
       risk        = (1 − risk_score) × 100
       breakdown[d] = round(weights[d] × dimension_d, 2);  total = Σ breakdown
@@ -117,7 +118,7 @@ def score(
     ]
     eligible = [vq for vq, _, reasons in rows if not reasons]
     costs = [float(vq.landed_cost) for vq in eligible]
-    leads = [float(vq.lead_time_days) for vq in eligible]
+    leads = [float(effective_lead_time_days(vq)) for vq in eligible]
     cost_lo, cost_hi = (min(costs), max(costs)) if costs else (0.0, 0.0)
     lead_lo, lead_hi = (min(leads), max(leads)) if leads else (0.0, 0.0)
 
@@ -130,7 +131,7 @@ def score(
                 Scorecard(
                     supplier_id=vq.supplier_id,
                     landed_cost=vq.landed_cost,
-                    lead_time_days=vq.lead_time_days,
+                    lead_time_days=effective_lead_time_days(vq),
                     reliability_score=rel,
                     risk_score=risk,
                     total_score=0.0,
@@ -143,7 +144,7 @@ def score(
 
         dims = {
             "price": _min_max(float(vq.landed_cost), cost_lo, cost_hi),
-            "lead_time": _min_max(float(vq.lead_time_days), lead_lo, lead_hi),
+            "lead_time": _min_max(float(effective_lead_time_days(vq)), lead_lo, lead_hi),
             "reliability": rel * 100.0,
             "risk": (1.0 - risk) * 100.0,
         }
@@ -158,7 +159,7 @@ def score(
             Scorecard(
                 supplier_id=vq.supplier_id,
                 landed_cost=vq.landed_cost,
-                lead_time_days=vq.lead_time_days,
+                lead_time_days=effective_lead_time_days(vq),
                 reliability_score=round(rel, 4),
                 risk_score=round(risk, 4),
                 total_score=total,
