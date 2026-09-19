@@ -1,19 +1,26 @@
 import { useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { CalcMismatchDetail, Run } from '../api/types'
+import type { CalcMismatchDetail, NegotiationApprovalDetail, Run } from '../api/types'
 import { money } from '../format'
 import { Button, ErrorLine } from './Panel'
 
-/** Human gates (PLAN.md G1/G6): rendered from run.pending_human.kind. */
+/** Human gates (PLAN.md G1/G5/G6): rendered from run.pending_human.kind. */
 export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
   const pending = run.pending_human
   if (!pending) return null
+  let body
+  if (pending.kind === 'calc_mismatch') body = <MismatchGate run={run} onRun={onRun} />
+  else if (pending.kind === 'negotiation_approval') {
+    const d = pending.details as unknown as NegotiationApprovalDetail
+    // Keyed per draft so the textarea resets when the next round (or supplier) comes up.
+    body = <NegotiationGate key={`${d.supplier_id}-${d.round}`} run={run} onRun={onRun} detail={d} />
+  } else body = <ExtractionGate run={run} onRun={onRun} />
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
       <div className="w-full max-w-2xl rounded-lg border border-amber-700 bg-zinc-900 p-5 shadow-2xl">
         <div className="mb-1 text-xs font-semibold uppercase tracking-widest text-amber-400">Human review required · {pending.kind}</div>
         <p className="mb-4 text-sm text-zinc-300">{pending.message}</p>
-        {pending.kind === 'calc_mismatch' ? <MismatchGate run={run} onRun={onRun} /> : <ExtractionGate run={run} onRun={onRun} />}
+        {body}
       </div>
     </div>
   )
@@ -143,6 +150,112 @@ function ExtractionGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
           </ul>
         </div>
       )}
+      <ErrorLine error={error} />
+    </div>
+  )
+}
+
+/**
+ * Negotiation send gate (G5): the agent's draft is shown in an editable textarea and nothing leaves
+ * without a click. An edited message is re-checked by the backend's outbound filter (G3); a 422
+ * policy_violation keeps the modal open and lists the reasons under the textarea.
+ */
+function NegotiationGate({ run, onRun, detail }: { run: Run; onRun: (r: Run) => void; detail: NegotiationApprovalDetail }) {
+  const [text, setText] = useState(detail.draft)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [violations, setViolations] = useState<string[]>([])
+  const edited = text !== detail.draft
+  const quote = run.quotes.find((q) => q.supplier_id === detail.supplier_id)
+  const thread = run.negotiations[detail.supplier_id]
+  const b = detail.boundaries
+  const current = thread?.current_offer ?? thread?.original_offer
+
+  const send = async () => {
+    setBusy(true)
+    setError(null)
+    setViolations([])
+    try {
+      // Only an edited text travels; otherwise the backend sends the draft it already holds.
+      onRun(await api.approveNegotiation(run.run_id, detail.supplier_id, edited ? text : undefined))
+    } catch (err) {
+      const e = err as ApiError
+      if (e.status === 422 && e.code === 'policy_violation') setViolations(e.violations.length ? e.violations : [e.message])
+      else setError(e.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="rounded border border-zinc-700 bg-zinc-950/60 p-3">
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="font-medium">{quote?.supplier_name ?? detail.supplier_id}</span>
+          <span className="mono text-xs text-zinc-500">
+            {detail.supplier_id} · round {detail.round} of {b.max_rounds}
+          </span>
+        </div>
+        <div className="mono grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded bg-zinc-900 p-2">
+            <div className="text-[10px] uppercase text-zinc-500">Supplier's standing offer</div>
+            <div className="text-zinc-200">{current ? `${current.unit_price}/unit · ${current.lead_time_days} d` : '—'}</div>
+          </div>
+          <div className="rounded bg-zinc-900 p-2">
+            <div className="text-[10px] uppercase text-zinc-500">Our ask (target)</div>
+            <div className="text-emerald-300">
+              {detail.target_offer.unit_price}/unit · {detail.target_offer.lead_time_days} d
+            </div>
+          </div>
+          <div className="rounded bg-zinc-900 p-2">
+            <div className="text-[10px] uppercase text-zinc-500">Boundaries</div>
+            <div className="text-zinc-300">
+              ≤ {b.max_discount_ask_pct}% off · ≥ {b.min_lead_time_days} d · {b.max_rounds} rounds
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <label className="block text-xs text-zinc-400">
+        Message to {quote?.supplier_name ?? detail.supplier_id}
+        {edited && <span className="ml-2 text-amber-400">(edited — will be re-checked by the policy filter)</span>}
+        <textarea
+          className="mt-1 h-48 w-full resize-y rounded border border-zinc-700 bg-zinc-950 p-2 text-sm leading-relaxed text-zinc-100 focus:border-emerald-500 focus:outline-none"
+          value={text}
+          disabled={busy}
+          onChange={(e) => {
+            setText(e.target.value)
+            setViolations([])
+          }}
+        />
+      </label>
+
+      {violations.length > 0 && (
+        <div className="rounded border border-red-900 bg-red-950/60 px-3 py-2 text-red-200">
+          <div className="text-xs font-semibold uppercase tracking-wide">Blocked by the outbound policy filter — not sent</div>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
+            {violations.map((v, i) => (
+              <li key={i}>{v}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button disabled={busy || text.trim() === ''} onClick={() => void send()}>
+          {busy ? 'Sending…' : 'Approve & Send'}
+        </Button>
+        <Button
+          tone="ghost"
+          disabled={busy || !edited}
+          onClick={() => {
+            setText(detail.draft)
+            setViolations([])
+          }}
+        >
+          Reset to draft
+        </Button>
+      </div>
       <ErrorLine error={error} />
     </div>
   )

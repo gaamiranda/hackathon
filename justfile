@@ -55,6 +55,10 @@ extract-live *ARGS:
 demo:
     cd backend && uv run python scripts/demo_week1.py
 
+# Week 2 demo over HTTP against a running backend: Week 1 path, then negotiate and auto-approve every draft
+demo-week2:
+    cd backend && uv run python scripts/demo_week2.py
+
 # Full negotiated run in-process (mock mode): mismatch → negotiation with top-2 → re-score; prints the event log
 demo-negotiation:
     cd backend && uv run python scripts/demo_negotiation.py

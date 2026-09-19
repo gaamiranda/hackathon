@@ -9,7 +9,14 @@ import { TimelinePanel } from '../components/TimelinePanel'
 import { useEventStream } from '../hooks/useEventStream'
 
 /** Events after which the Run aggregate has changed in ways only GET /runs/{id} reveals. */
-const REFETCH_ON = new Set(['recommendation.ready', 'extraction.needs_human', 'calc.mismatch', 'extraction.completed'])
+const REFETCH_ON = new Set([
+  'recommendation.ready',
+  'extraction.needs_human',
+  'calc.mismatch',
+  'extraction.completed',
+  'negotiation.awaiting_approval',
+  'negotiation.closed',
+])
 
 export function RunPage() {
   const { id } = useParams<{ id: string }>()
@@ -74,7 +81,7 @@ export function RunPage() {
       <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)_420px] gap-3 p-3">
         <RequestPanel run={run} onRun={setRun} quoteByDoc={quoteByDoc} />
         <TimelinePanel events={events} status={status} state={run.state} />
-        <DecisionPanel run={run} />
+        <DecisionPanel run={run} onRun={setRun} events={events} />
       </div>
       <HumanGate run={run} onRun={setRun} />
     </div>

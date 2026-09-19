@@ -1,14 +1,17 @@
-import type { CreateRunInput, Health, Run, RunSummary, WorkflowEvent } from './types'
+import type { CreateRunInput, Health, NegotiationThread, Run, RunSummary, WorkflowEvent } from './types'
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
   status: number
   code: string | null
-  constructor(status: number, code: string | null, message: string) {
+  /** Set on 422 policy_violation (edited negotiation message failed the outbound filter, G3). */
+  violations: string[]
+  constructor(status: number, code: string | null, message: string, violations: string[] = []) {
     super(message)
     this.status = status
     this.code = code
+    this.violations = violations
   }
 }
 
@@ -22,14 +25,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!res.ok) {
     let code: string | null = null
     let message = `${res.status} ${res.statusText}`
+    let violations: string[] = []
     try {
-      const body = (await res.json()) as { code?: string; message?: string; detail?: unknown }
+      const body = (await res.json()) as { code?: string; message?: string; detail?: unknown; violations?: unknown }
       code = body.code ?? null
       message = body.message ?? (typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail ?? body))
+      if (Array.isArray(body.violations)) violations = body.violations.filter((v): v is string => typeof v === 'string')
     } catch {
       /* non-JSON error body */
     }
-    throw new ApiError(res.status, code, message)
+    throw new ApiError(res.status, code, message, violations)
   }
   return (await res.json()) as T
 }
@@ -72,6 +77,15 @@ export const api = {
 
   confirmMath: (runId: string, quoteId: string, useComputed: boolean) =>
     request<Run>(`/runs/${runId}/quotes/${quoteId}/confirm-math`, json('POST', { use_computed: useComputed })),
+
+  /** RECOMMENDED → agent drafts for the top eligible supplier → AWAITING_NEGOTIATION_APPROVAL. */
+  negotiate: (runId: string) => request<Run>(`/runs/${runId}/negotiate`, { method: 'POST' }),
+
+  /** Human gate (G5). Pass `message` only when the draft was edited; the backend re-filters it (422 policy_violation). */
+  approveNegotiation: (runId: string, supplierId: string, message?: string) =>
+    request<Run>(`/runs/${runId}/negotiation/${supplierId}/approve`, json('POST', message === undefined ? {} : { message })),
+
+  listNegotiations: (runId: string) => request<Record<string, NegotiationThread>>(`/runs/${runId}/negotiations`),
 
   listEvents: (runId: string, since = -1) => request<WorkflowEvent[]>(`/runs/${runId}/events?since=${since}`),
 

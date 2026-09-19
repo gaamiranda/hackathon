@@ -47,9 +47,17 @@ export interface ScoringWeights {
 export interface ProcurementConfig {
   weights: ScoringWeights
   thresholds: { max_defect_rate: number; min_confidence: number; tie_margin: number }
-  negotiation: { max_discount_ask_pct: string; min_lead_time_days: number; max_rounds: number }
+  negotiation: NegotiationBoundaries
   approvals: { negotiation_send: boolean; po_generation: boolean }
   tax_rate_pct: string
+}
+
+export interface NegotiationBoundaries {
+  default_ask_pct: string
+  max_discount_ask_pct: string
+  min_lead_time_days: number
+  max_rounds: number
+  negotiate_top_n: number
 }
 
 export interface RawDocument {
@@ -79,6 +87,36 @@ export interface NormalizedQuote {
   llm_stated_total: Money | null
   field_confidence: Record<string, number>
   raw_excerpt: string
+  /** Accepted counter-offer; the engine costs with it, the fields above stay as quoted (D17). */
+  negotiated_offer: NegotiationOffer | null
+}
+
+/** Price and lead time only (D7). */
+export interface NegotiationOffer {
+  unit_price: Money
+  lead_time_days: number
+}
+
+export type NegotiationRole = 'buyer' | 'supplier'
+export type NegotiationStatus = 'open' | 'accepted' | 'rejected' | 'escalated' | 'closed'
+
+export interface NegotiationTurn {
+  role: NegotiationRole
+  /** Supplier turns are untrusted text (G4): render as plain text only. */
+  message: string
+  offer: NegotiationOffer | null
+  approved_by_human: boolean
+  ts: string
+}
+
+export interface NegotiationThread {
+  run_id: string
+  supplier_id: string
+  turns: NegotiationTurn[]
+  status: NegotiationStatus
+  boundaries: NegotiationBoundaries
+  original_offer: NegotiationOffer | null
+  current_offer: NegotiationOffer | null
 }
 
 export interface QuoteChecks {
@@ -98,6 +136,7 @@ export interface ValidatedQuote extends NormalizedQuote {
   landed_cost: Money
   checks: QuoteChecks
   issues: string[]
+  negotiated: boolean
 }
 
 export interface Scorecard {
@@ -122,7 +161,7 @@ export interface Recommendation {
   escalation: { reason: string; details: Record<string, unknown> } | null
 }
 
-export type PendingHumanKind = 'extraction' | 'calc_mismatch'
+export type PendingHumanKind = 'extraction' | 'calc_mismatch' | 'negotiation_approval'
 
 export interface CalcMismatchDetail {
   supplier_id: string
@@ -130,13 +169,30 @@ export interface CalcMismatchDetail {
   stated_total: Money
 }
 
+/** pending_human.details for kind "negotiation_approval" (G5: nothing is sent without a click). */
+export interface NegotiationApprovalDetail {
+  supplier_id: string
+  round: number
+  draft: string
+  target_offer: NegotiationOffer
+  boundaries: NegotiationBoundaries
+}
+
 export interface PendingHuman {
   kind: PendingHumanKind
   quote_ids: string[]
   message: string
-  /** calc_mismatch: { [quote_id]: CalcMismatchDetail }
-   *  extraction:    { fields: { [quote_id]: string[] }, failed_documents: { [doc_id]: string } } */
+  /** calc_mismatch:         { [quote_id]: CalcMismatchDetail }
+   *  extraction:            { fields: { [quote_id]: string[] }, failed_documents: { [doc_id]: string } }
+   *  negotiation_approval:  NegotiationApprovalDetail */
   details: Record<string, unknown>
+}
+
+/** 422 body of POST /runs/{id}/negotiation/{sid}/approve when an edited message fails the outbound filter (G3). */
+export interface PolicyViolationError {
+  code: 'policy_violation'
+  message: string
+  violations: string[]
 }
 
 export interface Run {
@@ -150,6 +206,8 @@ export interface Run {
   scorecards: Scorecard[]
   recommendation: Recommendation | null
   pending_human: PendingHuman | null
+  /** supplier_id → thread */
+  negotiations: Record<string, NegotiationThread>
   created_at: string
   updated_at: string
 }

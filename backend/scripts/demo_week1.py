@@ -14,7 +14,8 @@ FIXTURES, SYNTHETIC = ROOT / "data" / "fixtures", ROOT / "data" / "synthetic"
 DOCS = ["supplier_a_apex.pdf", "supplier_b_borealis.xlsx", "supplier_c_cobalt.eml.txt"]
 
 
-def main(base_url: str) -> None:
+def main(base_url: str) -> tuple[httpx.Client, str, dict]:
+    """Create → upload → evaluate → confirm mismatch → print the ranking. Returns (client, run_id, run)."""
     c = httpx.Client(base_url=base_url, timeout=30)
     print("health:", c.get("/health").json())
 
@@ -48,6 +49,7 @@ def main(base_url: str) -> None:
     print(f"rationale: {rec['rationale']}")
     events = c.get(f"/runs/{run_id}/events").json()
     print(f"\n{len(events)} events logged; stream with: curl -N {base_url}/runs/{run_id}/events/stream")
+    return c, run_id, run
 
 
 if __name__ == "__main__":

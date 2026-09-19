@@ -9,7 +9,7 @@ export default function App() {
         <Link to="/" className="text-sm font-semibold tracking-widest text-zinc-100">
           PROCURE<span className="text-emerald-400">AI</span>
         </Link>
-        <span className="text-xs text-zinc-500">war room · week 1</span>
+        <span className="text-xs text-zinc-500">war room · week 2</span>
       </header>
       <Routes>
         <Route path="/" element={<RunListPage />} />

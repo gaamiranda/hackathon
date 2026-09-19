@@ -169,3 +169,123 @@ def test_sse_replays_events(client):
     assert all(set(b) == {"id", "data"} for b in received)
     assert [json.loads(b["data"])["type"] for b in received] == [e["type"] for e in expected]
     assert json.loads(received[-1]["data"])["type"] == "recommendation.ready"
+
+
+# --------------------------------------------------------------------------- negotiation (T12)
+
+
+def recommended(client: TestClient) -> str:
+    """Demo path up to RECOMMENDED over HTTP (A's wrong total confirmed with the computed value)."""
+    run_id = create(client)
+    assert upload(client, run_id, DOCS).status_code == 200
+    run = client.post(f"/runs/{run_id}/evaluate").json()
+    assert run["state"] == "CALC_MISMATCH"
+    run = client.post(f"/runs/{run_id}/quotes/APX-Q-26091/confirm-math", json={"use_computed": True}).json()
+    assert run["state"] == "RECOMMENDED"
+    return run_id
+
+
+def test_negotiate_before_recommended_is_409(client):
+    run_id = create(client)
+    r = client.post(f"/runs/{run_id}/negotiate")
+    assert r.status_code == 409 and r.json()["code"] == "illegal_transition"
+    r = client.post(f"/runs/{run_id}/negotiation/sup_b/approve", json={})
+    assert r.status_code == 409 and r.json()["code"] == "illegal_transition"
+    assert client.post("/runs/run-nope/negotiate").status_code == 404
+    assert client.get("/runs/run-nope/negotiations").status_code == 404
+    assert client.get(f"/runs/{run_id}/negotiations").json() == {}
+
+
+def test_full_negotiation_loop_over_http(client):
+    run_id = recommended(client)
+    r = client.post(f"/runs/{run_id}/negotiate")
+    assert r.status_code == 200, r.text
+    run = r.json()
+    assert run["state"] == "AWAITING_NEGOTIATION_APPROVAL"
+    pending = run["pending_human"]
+    assert pending["kind"] == "negotiation_approval"
+    assert set(pending["details"]) == {"supplier_id", "round", "draft", "target_offer", "boundaries"}
+    assert pending["details"]["supplier_id"] == "sup_b" and pending["details"]["round"] == 1
+
+    # approving for the wrong supplier is refused; the pending draft stays
+    r = client.post(f"/runs/{run_id}/negotiation/sup_c/approve")
+    assert r.status_code == 409 and r.json()["code"] == "not_pending"
+
+    approved: list[tuple[str, int]] = []
+    while run["state"] == "AWAITING_NEGOTIATION_APPROVAL":
+        d = run["pending_human"]["details"]
+        approved.append((d["supplier_id"], d["round"]))
+        r = client.post(f"/runs/{run_id}/negotiation/{d['supplier_id']}/approve", json={})
+        assert r.status_code == 200, r.text
+        run = r.json()
+    assert approved == [("sup_b", 1), ("sup_b", 2), ("sup_c", 1), ("sup_c", 2)]
+
+    assert run["state"] == "RECOMMENDED" and run["pending_human"] is None
+    assert run["recommendation"]["recommended_supplier_id"] == "sup_b"
+    assert run["recommendation"]["change_explanation"]
+    assert "Landed cost of sup_b changed from 27,618.42 to 26,763.86" in run["recommendation"]["change_explanation"]
+    threads = run["negotiations"]
+    assert set(threads) == {"sup_b", "sup_c"}
+    assert all(t["status"] == "accepted" and len(t["turns"]) == 4 for t in threads.values())
+    assert all(t["turns"][0]["approved_by_human"] and not t["turns"][1]["approved_by_human"] for t in threads.values())
+    assert threads["sup_c"]["current_offer"] == {"unit_price": "12.45", "lead_time_days": 9}
+    assert client.get(f"/runs/{run_id}/negotiations").json() == threads
+    assert client.get(f"/runs/{run_id}").json()["negotiations"] == threads
+    assert {q["supplier_id"]: q["negotiated_offer"] for q in run["quotes"]} == {
+        "sup_a": None,
+        "sup_b": {"unit_price": "12.40", "lead_time_days": 10},
+        "sup_c": {"unit_price": "12.45", "lead_time_days": 9},
+    }
+    # settled threads cannot be reopened
+    assert client.post(f"/runs/{run_id}/negotiate").json()["code"] == "nothing_to_negotiate"
+
+
+def test_edited_message_naming_competitor_is_422(client):
+    run_id = recommended(client)
+    run = client.post(f"/runs/{run_id}/negotiate").json()
+    before = client.get(f"/runs/{run_id}").json()
+    n_events = len(client.get(f"/runs/{run_id}/events").json())
+
+    edited = run["pending_human"]["details"]["draft"] + " Apex offered us better terms."
+    r = client.post(f"/runs/{run_id}/negotiation/sup_b/approve", json={"message": edited})
+    assert r.status_code == 422, r.text
+    body = r.json()
+    assert body["code"] == "policy_violation"
+    assert body["violations"] and all(isinstance(v, str) for v in body["violations"])
+    assert any("Apex" in v for v in body["violations"])
+
+    after = client.get(f"/runs/{run_id}").json()
+    assert after["state"] == "AWAITING_NEGOTIATION_APPROVAL"
+    assert after["pending_human"] == before["pending_human"] and after["negotiations"] == before["negotiations"]
+    assert after["negotiations"]["sup_b"]["turns"] == []
+    new_events = client.get(f"/runs/{run_id}/events").json()[n_events:]
+    assert [e["type"] for e in new_events] == ["negotiation.policy_blocked"]
+    assert new_events[0]["payload"]["source"] == "human_edit"
+
+    # an edit that keeps to the supplier's own figures goes through and is marked edited
+    ok = "Dear Borealis team, could you do USD 11.78 per unit within 8 days?"
+    r = client.post(f"/runs/{run_id}/negotiation/sup_b/approve", json={"message": ok})
+    assert r.status_code == 200, r.text
+    turns = r.json()["negotiations"]["sup_b"]["turns"]
+    assert turns[0]["message"] == ok and turns[0]["approved_by_human"] and turns[0]["role"] == "buyer"
+    assert turns[1]["role"] == "supplier" and not turns[1]["approved_by_human"]
+
+
+def test_sse_replays_negotiation_events(client):
+    run_id = recommended(client)
+    run = client.post(f"/runs/{run_id}/negotiate").json()
+    while run["state"] == "AWAITING_NEGOTIATION_APPROVAL":
+        run = client.post(f"/runs/{run_id}/negotiation/{run['pending_human']['details']['supplier_id']}/approve").json()
+    assert run["state"] == "RECOMMENDED"
+
+    types = []
+    with client.stream("GET", f"/runs/{run_id}/events/stream", params={"follow": "false"}) as r:
+        assert r.status_code == 200
+        for line in r.iter_lines():
+            if line.startswith("data: "):
+                types.append(json.loads(line[len("data: "):])["type"])
+    for t in ("negotiation.started", "negotiation.drafted", "negotiation.awaiting_approval", "negotiation.sent",
+              "supplier.counter_offer", "negotiation.round_completed", "negotiation.closed", "rescoring.started"):
+        assert t in types, t
+    assert types.count("supplier.counter_offer") == 4 and types.count("negotiation.closed") == 2
+    assert types[-1] == "recommendation.ready"

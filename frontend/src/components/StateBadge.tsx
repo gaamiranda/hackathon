@@ -10,6 +10,11 @@ const TONE: Partial<Record<WorkflowState, string>> = {
   ENRICHING: 'bg-violet-900/60 text-violet-200',
   SCORING: 'bg-violet-900/60 text-violet-200',
   RECOMMENDED: 'bg-emerald-900/70 text-emerald-200 ring-1 ring-emerald-500',
+  NEGOTIATION_DRAFTED: 'bg-violet-900/60 text-violet-200',
+  AWAITING_NEGOTIATION_APPROVAL: 'bg-amber-900/70 text-amber-200 ring-1 ring-amber-500',
+  NEGOTIATING: 'bg-pink-900/60 text-pink-200',
+  COUNTER_RECEIVED: 'bg-pink-900/60 text-pink-200',
+  RE_SCORING: 'bg-violet-900/60 text-violet-200',
 }
 
 export function StateBadge({ state, size = 'sm' }: { state: WorkflowState; size?: 'sm' | 'lg' }) {

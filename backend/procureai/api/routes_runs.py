@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from procureai.api.deps import get_orchestrator, get_shutdown_event
@@ -18,6 +18,7 @@ from procureai.config.settings import get_settings
 from procureai.domain.models import (
     Currency,
     Money,
+    NegotiationThread,
     ProcurementConfig,
     ProcurementRequest,
     RawDocument,
@@ -73,6 +74,10 @@ class CorrectQuoteBody(BaseModel):
 
 class ConfirmMathBody(BaseModel):
     use_computed: bool
+
+
+class ApproveNegotiationBody(BaseModel):
+    message: str | None = Field(default=None, description="Edited draft; omit to send the agent's draft unchanged")
 
 
 def default_config() -> ProcurementConfig:
@@ -185,6 +190,34 @@ def correct_quote(run_id: str, quote_id: str, body: CorrectQuoteBody, orch: Orch
 @router.post("/{run_id}/quotes/{quote_id}/confirm-math", response_model=Run)
 def confirm_math(run_id: str, quote_id: str, body: ConfirmMathBody, orch: Orchestrator = Depends(get_orchestrator)) -> Run:
     return orch.confirm_quote_math(run_id, quote_id, body.use_computed)
+
+
+@router.post("/{run_id}/negotiate", response_model=Run)
+def negotiate(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> Run:
+    """RECOMMENDED → agent drafts for the top eligible supplier → AWAITING_NEGOTIATION_APPROVAL (G5)."""
+    return orch.start_negotiation(run_id)
+
+
+@router.post("/{run_id}/negotiation/{supplier_id}/approve", response_model=Run)
+def approve_negotiation(run_id: str, supplier_id: str, body: ApproveNegotiationBody | None = None,
+                        orch: Orchestrator = Depends(get_orchestrator)) -> Run | JSONResponse:
+    """Human gate: send the pending draft (or an edited message, re-filtered) to the simulated supplier.
+    An edit that fails the outbound policy filter → 422 {code: policy_violation, violations: [...]}."""
+    message = body.message if body else None
+    try:
+        return orch.approve_negotiation(run_id, supplier_id, message)
+    except WorkflowError as exc:
+        if exc.code != "policy_violation":
+            raise
+        # The orchestrator joins the filter's violations with "; " (see approve_negotiation).
+        violations = [v for v in exc.message.split("; ") if v]
+        return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            content={"code": exc.code, "message": exc.message, "violations": violations})
+
+
+@router.get("/{run_id}/negotiations", response_model=dict[str, NegotiationThread])
+def list_negotiations(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> dict[str, NegotiationThread]:
+    return orch.store.get(run_id).negotiations
 
 
 @router.get("/{run_id}/events", response_model=list[WorkflowEvent])
