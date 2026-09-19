@@ -1,7 +1,7 @@
 """Record/replay cache for live LLM calls (PLAN.md risk 2b: USD 100 shared credit).
 
 Cache files are committed, so tests and demos replay real gateway responses without spending tokens.
-Key = sha256(model, task, system, user, max_tokens); files live in data/llm_cache/<task>/<key>.json.
+Key = sha256(model, task, system, user, max_tokens, json_mode); files live in data/llm_cache/<task>/<key>.json.
 """
 
 import hashlib
@@ -17,8 +17,9 @@ DATA_DIR = Path(__file__).resolve().parents[3] / "data"
 CACHE_DIR = DATA_DIR / "llm_cache"
 
 
-def cache_key(model: str, task: str, system: str, user: str, max_tokens: int) -> str:
-    material = "\x00".join([model, task, system, user, str(max_tokens)])
+def cache_key(model: str, task: str, system: str, user: str, max_tokens: int, json_mode: bool) -> str:
+    """json_mode is part of the key: it changes the prompt sent and whether parsed_json is populated (D19)."""
+    material = "\x00".join([model, task, system, user, str(max_tokens), str(json_mode)])
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
@@ -47,7 +48,7 @@ class ReplayCache:
         max_tokens: int = 1024,
         json_mode: bool = False,
     ) -> LLMResult:
-        key = cache_key(self.model, task, system, user, max_tokens)
+        key = cache_key(self.model, task, system, user, max_tokens, json_mode)
         path = self.path_for(task, key)
 
         if self.mode != "record" and path.exists():

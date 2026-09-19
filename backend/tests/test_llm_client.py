@@ -238,7 +238,7 @@ def test_cache_records_on_miss_and_replays_on_hit(tmp_path):
     first = cache.complete(TASK, "sys", "user", max_tokens=64, json_mode=True)
     assert first.cached is False and len(inner.calls) == 1
 
-    path = tmp_path / TASK / f"{cache_key('test-model', TASK, 'sys', 'user', 64)}.json"
+    path = tmp_path / TASK / f"{cache_key('test-model', TASK, 'sys', 'user', 64, True)}.json"
     entry = json.loads(path.read_text())
     assert entry["request"] == {
         "model": "test-model",
@@ -261,8 +261,9 @@ def test_cache_key_separates_different_requests(tmp_path):
     cache.complete(TASK, "sys", "user-a", max_tokens=64)
     cache.complete(TASK, "sys", "user-b", max_tokens=64)
     cache.complete(TASK, "sys", "user-a", max_tokens=128)
-    assert len(list((tmp_path / TASK).glob("*.json"))) == 3
-    assert len(inner.calls) == 3
+    cache.complete(TASK, "sys", "user-a", max_tokens=64, json_mode=True)  # D19: json_mode is part of the key
+    assert len(list((tmp_path / TASK).glob("*.json"))) == 4
+    assert len(inner.calls) == 4
 
 
 def test_record_mode_always_calls_and_overwrites(tmp_path):
@@ -273,7 +274,7 @@ def test_record_mode_always_calls_and_overwrites(tmp_path):
     result = cache.complete(TASK, "sys", "user")
 
     assert result.cached is False and len(inner.calls) == 2
-    path = tmp_path / TASK / f"{cache_key('test-model', TASK, 'sys', 'user', 1024)}.json"
+    path = tmp_path / TASK / f"{cache_key('test-model', TASK, 'sys', 'user', 1024, False)}.json"
     assert json.loads(path.read_text())["result"]["text"] == "second"
 
 

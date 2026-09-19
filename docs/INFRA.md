@@ -99,11 +99,14 @@ bare JSON from this gateway.
 ## Cost control
 
 `data/llm_cache/` is a committed record/replay cache keyed by
-`sha256(model, task, system, user, max_tokens)`. `LLM_CACHE_MODE`:
+`sha256(model, task, system, user, max_tokens, json_mode)` (D19). `LLM_CACHE_MODE`:
 
 - `replay_or_record` (default) — replay if recorded, otherwise call and record
 - `record` — always call, overwrite
 - `replay_only` — raise `LLMCacheMiss` on a miss; set by `backend/tests/conftest.py`, so the test suite
   and CI can never spend a token or reach the network
 
-T4 spent **7 live calls** in total: 2 × `/api/chat` probe, 2 × `/api/tags`, 3 × extraction (recorded).
+T4 spent **7 live calls**: 2 × `/api/chat` probe, 2 × `/api/tags`, 3 × extraction (recorded).
+T5 spent **7 more**: 3 extractions on a first draft of the Document Agent prompt, 3 after the prompt
+was corrected, 1 on the injection fixture. The superseded entries were pruned, so every file under
+`data/llm_cache/` is reachable by some current prompt.

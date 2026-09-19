@@ -3,10 +3,14 @@
 import json
 
 from procureai.llm.base import LLMResult
+from procureai.llm.gateway import extract_json
 
 
 class MockLLMClient:
-    """Returns the text / JSON given at construction, optionally overridden per task label."""
+    """Returns the text / JSON given at construction, optionally overridden per task label.
+
+    When only `text` is given, json_mode parses it the way the gateway client would, so a test can
+    hand an agent realistic model output (code fences, prose, garbage) and exercise the real path."""
 
     def __init__(
         self,
@@ -33,4 +37,6 @@ class MockLLMClient:
             {"task": task, "system": system, "user": user, "max_tokens": max_tokens, "json_mode": json_mode}
         )
         text, parsed = self.by_task.get(task, (self.text, self.parsed_json))
+        if json_mode and parsed is None:
+            parsed = extract_json(text)
         return LLMResult(text=text, parsed_json=parsed if json_mode else None, raw={}, cached=False, latency_ms=0)

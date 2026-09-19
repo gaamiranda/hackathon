@@ -1,0 +1,12 @@
+{
+  "_comment": "Slug of the supplier name as printed on a document → canonical supplier_id in supplier_history.json. Unknown slugs are used as-is, which makes the supplier ineligible (no profile) rather than silently matching the wrong one.",
+  "aliases": {
+    "apex-components-ltd": "sup_a",
+    "apex-components": "sup_a",
+    "borealis-manufacturing-as": "sup_b",
+    "borealis-manufacturing": "sup_b",
+    "cobalt-industrial": "sup_c",
+    "cobalt-industrial-pte-ltd": "sup_c",
+    "delta-trading": "sup_d"
+  }
+}

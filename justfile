@@ -47,6 +47,10 @@ probe-llm:
 extractions *ARGS:
     cd backend && uv run python scripts/record_extractions.py {{ ARGS }}
 
+# Extract synthetic documents with the live Document Agent (replays data/llm_cache/; --record re-runs live)
+extract-live *ARGS:
+    cd backend && uv run python scripts/extract_live.py {{ ARGS }}
+
 # Week 1 demo over HTTP against a running backend
 demo:
     cd backend && uv run python scripts/demo_week1.py
