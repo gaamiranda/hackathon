@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "We understand your position and have gone back to our management for a final review. We can move to USD 12.40 per unit, which is our final offer for this order, with the lead time remaining at 10 days. We trust this demonstrates our commitment to a long-term relationship and we are ready to confirm the order on your go-ahead.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.03
+    },
+    "usage": {
+      "input_tokens": 363,
+      "output_tokens": 23
+    }
+  }
+}

@@ -78,7 +78,7 @@ export function RunListPage() {
         right={
           health && (
             <span className="mono text-xs text-zinc-500">
-              backend: {health.mode} · llm {health.llm_gateway}
+              backend: {health.mode} · llm {health.llm_gateway} · judge {health.guardrail_judge}
             </span>
           )
         }

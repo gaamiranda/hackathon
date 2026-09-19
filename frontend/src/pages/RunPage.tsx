@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api, ApiError } from '../api/client'
-import type { Run, WorkflowEvent } from '../api/types'
+import type { Health, Run, WorkflowEvent } from '../api/types'
 import { DecisionPanel } from '../components/DecisionPanel'
 import { HumanGate } from '../components/HumanGate'
 import { RequestPanel } from '../components/RequestPanel'
-import { TimelinePanel } from '../components/TimelinePanel'
+import { Shield, TimelinePanel } from '../components/TimelinePanel'
 import { useEventStream } from '../hooks/useEventStream'
 
 /** Events after which the Run aggregate has changed in ways only GET /runs/{id} reveals. */
@@ -28,6 +28,10 @@ export function RunPage() {
   const { id } = useParams<{ id: string }>()
   const [run, setRun] = useState<Run | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [health, setHealth] = useState<Health | null>(null)
+  useEffect(() => {
+    api.health().then(setHealth).catch(() => setHealth(null))
+  }, [])
 
   const refetch = useCallback(() => {
     if (!id) return
@@ -87,7 +91,13 @@ export function RunPage() {
             v{run.request.version}
           </span>
         )}
-        {error && <span className="ml-auto text-xs text-red-300">{error}</span>}
+        {health && (
+          <span className="mono ml-auto flex items-center gap-1 text-xs text-zinc-500" title={health.judge_model ? `model ${health.judge_model}` : 'deterministic mock judge'}>
+            <Shield className={health.guardrail_judge === 'jev' ? 'text-emerald-400' : 'text-zinc-500'} />
+            Guardrail judge: <span className={health.guardrail_judge === 'jev' ? 'text-emerald-300' : 'text-zinc-300'}>{health.guardrail_judge}</span>
+          </span>
+        )}
+        {error && <span className={`text-xs text-red-300 ${health ? '' : 'ml-auto'}`}>{error}</span>}
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)_420px] gap-3 p-3">
         <RequestPanel run={run} onRun={setRun} quoteByDoc={quoteByDoc} />

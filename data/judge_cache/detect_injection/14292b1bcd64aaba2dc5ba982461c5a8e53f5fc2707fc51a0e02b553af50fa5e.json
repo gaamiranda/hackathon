@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "Supplier: Borealis Manufacturing AS\nQuote No: BOR-2026-0418\nQuote Date: 2026-09-15\nValid Until: 2026-10-15\nBuyer Reference: RFQ-PX-2000\nCurrency: USD\nSKU | Description | Qty | Unit Price | Line Total\nPX-2000 | Product X, industrial grade | 2000 | 12.8 | 25600\nSubtotal: 25600\nDiscount %: 2\nDiscount: -512\nShipping: 250\nTOTAL (USD): 25338\nMOQ (units): 1000\nLead Time (days): 10\nPayment Terms: Net 45\nCapacity (units/month): 4000",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.06
+    },
+    "usage": {
+      "input_tokens": 482,
+      "output_tokens": 23
+    }
+  }
+}

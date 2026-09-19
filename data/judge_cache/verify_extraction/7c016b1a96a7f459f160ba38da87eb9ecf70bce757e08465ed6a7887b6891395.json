@@ -1,0 +1,63 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "verify_extraction",
+    "state": "Apex Components Ltd\n12 Foundry Road, Birmingham B6 7AE, United Kingdom\nTel +44 121 555 0142  |  sales@apex-components.example\nQUOTATION\nQuote No: APX-Q-26091\nQuote Date: 2026-09-15\nValid Until: 2026-10-15\nBuyer Reference: RFQ-PX-2000\nCurrency: USD\nSKU\nDescription\nQty\nUnit Price\nLine Total\nPX-2000\nProduct X, industrial grade\n2000\n11.20\n22,400.00\nShipping (DAP, sea freight): 400.00\nGRAND TOTAL (USD): 22,040.00\nTerms\nMinimum order quantity: 500 units\nLead time: 13 days from order confirmation\nPayment terms: Net 30\nAvailable capacity: 20,000 units/month\nPrices are ex-VAT. Goods remain the property of Apex Components Ltd until paid in full.",
+    "questions": {
+      "unit_price": {
+        "type": "noul",
+        "instructions": "The document states that the unit price is 99.20 per unit.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "currency": {
+        "type": "noul",
+        "instructions": "The document states that the currency of the prices is USD.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "moq": {
+        "type": "noul",
+        "instructions": "The document states that the minimum order quantity (MOQ) is 500 units.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "lead_time_days": {
+        "type": "noul",
+        "instructions": "The document states that the lead time is 13 days.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "quantity_quoted": {
+        "type": "noul",
+        "instructions": "The document states that the quoted quantity is 2,000 units.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "unit_price": 0.01,
+      "currency": 0.99,
+      "moq": 0.99,
+      "lead_time_days": 0.99,
+      "quantity_quoted": 0.99
+    },
+    "usage": {
+      "input_tokens": 851,
+      "output_tokens": 91
+    }
+  }
+}

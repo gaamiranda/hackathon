@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "Thank you for the feedback on our quotation. We value the opportunity to work with you and have reviewed our costing. We can offer a revised unit price of USD 12.55 for the 2,000 units. Our lead time of 10 days is firm, as it is tied to our current production schedule. Please let us know if you would like us to proceed on these terms.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.03
+    },
+    "usage": {
+      "input_tokens": 372,
+      "output_tokens": 23
+    }
+  }
+}

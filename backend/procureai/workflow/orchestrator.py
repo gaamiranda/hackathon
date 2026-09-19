@@ -12,10 +12,14 @@ RECOMMENDED | EXTRACTED | AWAITING_NEGOTIATION_APPROVAL | AWAITING_PO_APPROVAL
 
 The orchestrator owns state and calls agents/engine; it never does arithmetic. Negotiation
 guardrails live here, not in the agent: the round limit (G2) and the outbound leakage filter (G3).
+An optional GuardrailJudge (D20, T14) gives a second, calibrated opinion at three points — extraction
+verification, outbound leakage, injection detection — and may only lower a field's confidence or add a
+violation; when it is absent or fails, the run proceeds exactly as before.
 The PurchaseOrder is constructed only in request_po (preview) and approve_po (final); no agent
 tool reaches either (G5).
 """
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -64,11 +68,14 @@ from procureai.engine import (
     recommended_id,
 )
 from procureai.engine.costing import pre_tax_total
-from procureai.engine.policy import buyer_turns
+from procureai.engine.policy import PolicyResult, buyer_turns
+from procureai.guardrails.base import GuardrailJudge
 from procureai.sim import ScriptedSupplier, SupplierSim
 from procureai.workflow.errors import WorkflowError
 from procureai.workflow.events import EventBus
 from procureai.workflow.store import RunStore
+
+log = logging.getLogger(__name__)
 
 S = WorkflowState
 EngineFn = Callable[..., EvaluationResult]
@@ -111,8 +118,10 @@ class Orchestrator:
         now: Callable[[], datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
         supplier: SupplierSim | None = None,
+        judge: GuardrailJudge | None = None,
     ) -> None:
         self.agents = agents
+        self.judge = judge
         self.store = store
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.events = events or EventBus(store, now=self.now)
@@ -305,6 +314,7 @@ class Orchestrator:
                                                 offer=reply.offer, ts=self.now()))
             if reply.offer is not None:
                 thread.current_offer = reply.offer
+            self._judge_injection(run, reply.reply_text, {"supplier_id": supplier_id, "round": round_no, "source": "supplier_reply"})
             self._transition(run, S.COUNTER_RECEIVED, EventActor.SUPPLIER, "supplier.counter_offer",
                              f"{supplier_id} round {round_no}: " + (
                                  f"counter {reply.offer.unit_price}/unit, {reply.offer.lead_time_days} d"
@@ -686,7 +696,15 @@ class Orchestrator:
         for offer in [thread.original_offer, thread.current_offer, *(t.offer for t in thread.turns)]:
             if offer is not None:
                 allowed.add(offer.unit_price)
-        return check_outbound_message(text, profiles[quote.supplier_id], list(profiles.values()), allowed)
+        result = check_outbound_message(text, profiles[quote.supplier_id], list(profiles.values()), allowed)
+        # The judge can only add violations on top of the regex filter (D20); it never clears one.
+        others = [p.name for sid, p in profiles.items() if sid != quote.supplier_id]
+        verdict = self._judge_call("check_outbound", lambda: self.judge.check_outbound(
+            text, profiles[quote.supplier_id].name, others, allowed_amounts=allowed))
+        if verdict is not None and verdict.evaluated and verdict.leaks:
+            judged = [f"judge: {reason}" for reason in verdict.reasons] or ["judge: possible cross-supplier leak"]
+            return PolicyResult(ok=False, violations=result.violations + judged)
+        return result
 
     def _profiles(self, run: Run) -> dict[str, SupplierProfile]:
         profiles: dict[str, SupplierProfile] = {}
@@ -714,15 +732,70 @@ class Orchestrator:
                        {"agent": agent, "doc_id": doc.doc_id, "error": str(exc)})
             self._set_pending_extraction(run, {}, failed={doc.doc_id: str(exc)})
             return
-        run.quotes = [q for q in run.quotes if q.quote_id != quote.quote_id] + [quote]
         self._agent_finished(run, agent, f"Extracted {quote.supplier_name}: {quote.quantity_quoted} × {quote.unit_price} {quote.currency}",
                              {"doc_id": doc.doc_id, "quote_id": quote.quote_id})
+        self._judge_injection(run, doc.text, {"doc_id": doc.doc_id, "quote_id": quote.quote_id, "source": "document"})
+        quote = self._judge_extraction(run, doc, quote)
+        run.quotes = [q for q in run.quotes if q.quote_id != quote.quote_id] + [quote]
         low = self._low_confidence_fields(run, quote)
         self._emit(run, EventActor.AGENT, "quote.extracted",
                    f"{quote.quote_id}: {len(low)} critical field(s) below confidence threshold" if low
                    else f"{quote.quote_id}: all critical fields confident",
                    {"doc_id": doc.doc_id, "quote_id": quote.quote_id, "supplier_id": quote.supplier_id,
                     "field_confidence": quote.field_confidence, "low_confidence_fields": low, "quote": _json(quote)})
+
+    # ------------------------------------------------------------------ guardrail judge (D20)
+    # Additive only: the judge lowers confidence or adds violations, never the reverse, and never blocks a run
+    # by failing — every call is wrapped so an exception (patched judge, SDK, network) reads as "no judge".
+
+    def _judge_call(self, method: str, fn: Callable[[], Any]) -> Any:
+        if self.judge is None:
+            return None
+        try:
+            return fn()
+        except Exception as exc:
+            log.warning("guardrail judge %s raised %s: %s; continuing without it", method, type(exc).__name__, exc)
+            return None
+
+    def _judge_injection(self, run: Run, text: str, ref: dict[str, Any]) -> None:
+        """Informational event only (G4): the text stays stored verbatim and nothing downstream changes."""
+        verdict = self._judge_call("detect_injection", lambda: self.judge.detect_injection(text))
+        if verdict is None or not verdict.evaluated or not verdict.injection:
+            return
+        where = f"document {ref['doc_id']}" if "doc_id" in ref else f"{ref['supplier_id']} round {ref['round']} reply"
+        self._emit(run, EventActor.ENGINE, "guardrail.injection_detected",
+                   f"Judge: instructions aimed at an AI/procurement system in {where} (p={verdict.probability:.2f}); "
+                   "content treated as data, not followed",
+                   {**ref, "probability": verdict.probability})
+
+    def _judge_extraction(self, run: Run, doc: RawDocument, quote: NormalizedQuote) -> NormalizedQuote:
+        """Per-field verification against the document. An unsupported critical field that currently passes
+        the confidence gate has its confidence lowered to min(current, P(supported)) so the existing gate
+        routes it to the human form; a field already below the gate keeps the agent's own number.
+        Confidence is never raised."""
+        verdict = self._judge_call("verify_extraction", lambda: self.judge.verify_extraction(doc.text, quote))
+        if verdict is None or not verdict.evaluated or not verdict.fields:
+            return quote
+        threshold = run.config.thresholds.min_confidence
+        confidence = dict(quote.field_confidence)
+        lowered: dict[str, dict[str, float]] = {}
+        for field in verdict.unsupported:
+            current = confidence.get(field, 0.0)
+            p = verdict.fields[field].probability
+            if p is not None and current >= threshold and p < current:
+                confidence[field] = p
+                lowered[field] = {"from": current, "to": p}
+        fields = {f: v.model_dump() for f, v in verdict.fields.items()}
+        lowest = verdict.lowest_probability
+        self._emit(run, EventActor.ENGINE, "guardrail.extraction_verified",
+                   (f"Judge: {len(verdict.unsupported)} critical field(s) not supported by the document "
+                    f"({', '.join(verdict.unsupported)}); confidence lowered on {', '.join(sorted(lowered)) or 'none'}"
+                    if verdict.unsupported else
+                    "Judge: every critical field is stated in the document"
+                    + (f" (lowest p={lowest:.2f})" if lowest is not None else "")),
+                   {"doc_id": doc.doc_id, "quote_id": quote.quote_id, "fields": fields,
+                    "unsupported": verdict.unsupported, "lowered": lowered, "lowest_probability": lowest})
+        return quote.model_copy(update={"field_confidence": confidence}) if lowered else quote
 
     def _finish_extraction(self, run: Run) -> None:
         """EXTRACTING/NEEDS_HUMAN_EXTRACTION → EXTRACTED when every quote is clean."""

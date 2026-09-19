@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 
 from procureai.agents.factory import build_agents
 from procureai.config.settings import get_settings
+from procureai.guardrails import build_judge
 from procureai.workflow import EventBus, Orchestrator, RunStore
 
 EXIT_SIGNALS = (signal.SIGINT, signal.SIGTERM)
@@ -16,7 +17,8 @@ EXIT_SIGNALS = (signal.SIGINT, signal.SIGTERM)
 
 def build_orchestrator() -> Orchestrator:
     store = RunStore()
-    return Orchestrator(build_agents(get_settings()), store, events=EventBus(store))
+    settings = get_settings()
+    return Orchestrator(build_agents(settings), store, events=EventBus(store), judge=build_judge(settings))
 
 
 @asynccontextmanager

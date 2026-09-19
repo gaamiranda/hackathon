@@ -51,6 +51,10 @@ extractions *ARGS:
 extract-live *ARGS:
     cd backend && uv run python scripts/extract_live.py {{ ARGS }}
 
+# Guardrail judge (TypeSafe Jev) over the demo fixtures; replays data/judge_cache/ (free), --record re-runs live (≤ 40 calls)
+judge-live *ARGS:
+    cd backend && uv run python scripts/judge_live.py {{ ARGS }}
+
 # Week 1 demo over HTTP against a running backend
 demo:
     cd backend && uv run python scripts/demo_week1.py

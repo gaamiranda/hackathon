@@ -337,5 +337,8 @@ export interface Health {
   mode: 'mock' | 'live'
   llm_gateway: string
   openclaw: string
+  /** Guardrail judge (D20, T14): deterministic mock or TypeSafe Jev (replayed from cache when recorded). */
+  guardrail_judge: 'mock' | 'jev'
+  judge_model: string | null
   runs: number
 }

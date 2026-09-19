@@ -1,0 +1,35 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "check_outbound",
+    "state": {
+      "message_addressed_to": "Cobalt Industrial",
+      "other_suppliers_in_this_tender": [
+        "Apex Components Ltd",
+        "Borealis Manufacturing AS"
+      ],
+      "message": "Dear Cobalt Industrial team,\n\nThank you for your revised offer of USD 12.95 per unit with a 9-day lead time; we appreciate the movement. To close this order today we would need USD 12.06 per unit and delivery within 7 days. Could you confirm whether you can meet these terms? We are ready to confirm the order promptly on your reply.\n\nKind regards,\nProcurement Team"
+    },
+    "questions": {
+      "reveals_other_terms": {
+        "type": "noul",
+        "instructions": "This message reveals a price, offer or terms from a supplier other than Cobalt Industrial."
+      },
+      "names_competitor": {
+        "type": "noul",
+        "instructions": "This message names or refers to a competing supplier."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "reveals_other_terms": 0.22,
+      "names_competitor": 0.19
+    },
+    "usage": {
+      "input_tokens": 441,
+      "output_tokens": 42
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "Thanks for coming back to us. We are keen to win this order and can revise our unit price to USD 12.95, with delivery in 9 days from receipt of the deposit as before. Shipping remains free of charge. Let us know if this works for you and we will issue the updated quotation right away.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.04
+    },
+    "usage": {
+      "input_tokens": 355,
+      "output_tokens": 23
+    }
+  }
+}

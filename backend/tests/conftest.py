@@ -9,5 +9,7 @@ import os
 
 os.environ.setdefault("MODE", "mock")
 os.environ["LLM_CACHE_MODE"] = "replay_only"
+os.environ["JUDGE_CACHE_MODE"] = "replay_only"  # Jev verdicts replay from data/judge_cache/ (T14)
+os.environ.setdefault("GUARDRAIL_JUDGE", "mock")
 os.environ["LLM_GATEWAY_URL"] = ""
 os.environ["LLM_GATEWAY_API_KEY"] = ""

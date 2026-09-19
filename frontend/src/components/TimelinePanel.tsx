@@ -49,6 +49,25 @@ export function TimelinePanel({ events, status, state }: { events: WorkflowEvent
   )
 }
 
+/** Guardrail judge events (T14, D20): a second, calibrated opinion. Green shield = every critical field is
+ *  supported by the document (lowest probability shown); red shield = the text carries instructions aimed at
+ *  an AI / the procurement software (probability shown). Informational: the judge only lowers confidence or
+ *  adds a violation, never decides. */
+export function Shield({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" className={`inline-block shrink-0 ${className}`} fill="currentColor">
+      <path d="M8 1 2.5 3v4c0 3.4 2.3 6.3 5.5 7.5 3.2-1.2 5.5-4.1 5.5-7.5V3L8 1Z" />
+    </svg>
+  )
+}
+
+const GUARD_VERIFIED = 'guardrail.extraction_verified'
+const GUARD_INJECTION = 'guardrail.injection_detected'
+
+function probability(v: unknown): string | null {
+  return typeof v === 'number' ? `p=${v.toFixed(2)}` : null
+}
+
 /** Negotiation events (T11) carry {supplier_id, round, offer} and get their own rendering. */
 function isNegotiation(type: string): boolean {
   return type.startsWith('negotiation.') || type === 'supplier.counter_offer' || type === 'rescoring.started'
@@ -93,8 +112,16 @@ function EventRow({ event }: { event: WorkflowEvent }) {
   const replyText = counter && typeof event.payload.reply_text === 'string' ? (event.payload.reply_text as string) : null
   const generated = event.type === 'po.generated'
   const poNumber = generated ? ((event.payload.purchase_order as { po_number?: string } | undefined)?.po_number ?? null) : null
+  const verified = event.type === GUARD_VERIFIED
+  const injection = event.type === GUARD_INJECTION
+  const unsupported = verified && Array.isArray(event.payload.unsupported) ? (event.payload.unsupported as string[]) : []
+  const guardOk = verified && unsupported.length === 0
   const accent = generated
     ? 'border-l-2 border-l-emerald-400'
+    : guardOk
+      ? 'border-l-2 border-l-emerald-500'
+      : injection || (verified && !guardOk)
+        ? 'border-l-2 border-l-red-500'
     : replan || blocked || event.type === 'po.rejected' || event.type === 'po.discarded'
       ? 'border-l-2 border-l-red-500'
       : po
@@ -187,6 +214,21 @@ function EventRow({ event }: { event: WorkflowEvent }) {
           ) : event.type === 'po.discarded' ? (
             <p className="mt-0.5 break-words text-zinc-300">
               <span className="mr-1 rounded bg-red-900/50 px-1.5 py-0.5 text-[11px] text-red-100">PO preview discarded</span>
+              {event.summary}
+            </p>
+          ) : verified ? (
+            <p className="mt-0.5 break-words text-zinc-200">
+              <span className={`mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] ${guardOk ? 'bg-emerald-900/50 text-emerald-100' : 'bg-red-900/50 text-red-100'}`}>
+                <Shield /> judge {guardOk ? 'verified' : `unsupported: ${unsupported.join(', ')}`}
+                {probability(event.payload.lowest_probability) && <span className="mono opacity-80">lowest {probability(event.payload.lowest_probability)}</span>}
+              </span>
+              {event.summary}
+            </p>
+          ) : injection ? (
+            <p className="mt-0.5 break-words text-zinc-200">
+              <span className="mr-1 inline-flex items-center gap-1 rounded bg-red-900/50 px-1.5 py-0.5 text-[11px] text-red-100">
+                <Shield /> judge: injection {probability(event.payload.probability) && <span className="mono opacity-80">{probability(event.payload.probability)}</span>}
+              </span>
               {event.summary}
             </p>
           ) : (

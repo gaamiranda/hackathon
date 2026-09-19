@@ -1,0 +1,35 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "check_outbound",
+    "state": {
+      "message_addressed_to": "Borealis Manufacturing AS",
+      "other_suppliers_in_this_tender": [
+        "Apex Components Ltd",
+        "Cobalt Industrial"
+      ],
+      "message": "Dear Borealis Manufacturing AS team,\n\nThank you for quotation BOR-2026-0418 for 2,000 units of Product X at USD 12.80 per unit with a 10-day lead time. We would like to place this order with you, but to fit our plan we need a unit price of USD 11.78 and delivery within 8 days. Could you confirm whether you can meet these terms? We are ready to confirm the order promptly on your reply.\n\nKind regards,\nProcurement Team"
+    },
+    "questions": {
+      "reveals_other_terms": {
+        "type": "noul",
+        "instructions": "This message reveals a price, offer or terms from a supplier other than Borealis Manufacturing AS."
+      },
+      "names_competitor": {
+        "type": "noul",
+        "instructions": "This message names or refers to a competing supplier."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "reveals_other_terms": 0.16,
+      "names_competitor": 0.12
+    },
+    "usage": {
+      "input_tokens": 470,
+      "output_tokens": 42
+    }
+  }
+}
