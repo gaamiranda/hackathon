@@ -40,18 +40,27 @@
       }
     },
     "raw": {
-      "model": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-      "created_at": "2026-09-19T07:24:23.942416Z",
-      "message": {
-        "role": "assistant",
-        "content": "```json\n{\n  \"supplier_name\": \"Apex Components Ltd\",\n  \"quote_reference\": \"APX-Q-26091\",\n  \"unit_price\": 11.20,\n  \"currency\": \"USD\",\n  \"quantity_quoted\": 2000,\n  \"moq\": 500,\n  \"lead_time_days\": 13,\n  \"payment_terms\": \"Net 30\",\n  \"shipping_cost\": 400.00,\n  \"discount_pct\": 0,\n  \"validity_date\": \"2026-10-15\",\n  \"capacity_units\": 20000,\n  \"llm_stated_total\": 22040.00,\n  \"confidence\": {\n    \"supplier_name\": 1.0,\n    \"quote_reference\": 1.0,\n    \"unit_price\": 1.0,\n    \"currency\": 1.0,\n    \"quantity_quoted\": 1.0,\n    \"moq\": 1.0,\n    \"lead_time_days\": 1.0,\n    \"payment_terms\": 1.0,\n    \"shipping_cost\": 1.0,\n    \"discount_pct\": 1.0,\n    \"validity_date\": 1.0,\n    \"capacity_units\": 1.0,\n    \"llm_stated_total\": 1.0\n  }\n}\n```"
-      },
-      "done": true,
-      "done_reason": "stop",
-      "total_duration": 0,
-      "prompt_eval_count": 595,
-      "eval_count": 336
+      "id": "chatcmpl_8022147e-7d0c-4d85-bf33-e25885d8878e",
+      "object": "chat.completion",
+      "created": 1790064286,
+      "model": "openclaw/procureai",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "```json\n{\n  \"supplier_name\": \"Apex Components Ltd\",\n  \"quote_reference\": \"APX-Q-26091\",\n  \"unit_price\": 11.20,\n  \"currency\": \"USD\",\n  \"quantity_quoted\": 2000,\n  \"moq\": 500,\n  \"lead_time_days\": 13,\n  \"payment_terms\": \"Net 30\",\n  \"shipping_cost\": 400.00,\n  \"discount_pct\": 0,\n  \"validity_date\": \"2026-10-15\",\n  \"capacity_units\": 20000,\n  \"llm_stated_total\": 22040.00,\n  \"confidence\": {\n    \"supplier_name\": 1.0,\n    \"quote_reference\": 1.0,\n    \"unit_price\": 1.0,\n    \"currency\": 1.0,\n    \"quantity_quoted\": 1.0,\n    \"moq\": 1.0,\n    \"lead_time_days\": 1.0,\n    \"payment_terms\": 1.0,\n    \"shipping_cost\": 1.0,\n    \"discount_pct\": 1.0,\n    \"validity_date\": 1.0,\n    \"capacity_units\": 1.0,\n    \"llm_stated_total\": 1.0\n  }\n}\n```"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 4138,
+        "completion_tokens": 336,
+        "total_tokens": 4474
+      }
     },
-    "latency_ms": 4038
+    "latency_ms": 6224,
+    "backend": "openclaw"
   }
 }

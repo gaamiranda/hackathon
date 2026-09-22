@@ -15,10 +15,7 @@ import httpx
 
 from procureai.config.settings import Settings
 from procureai.llm.base import LLMResult, LLMRequestTooLarge, LLMUnavailable
-
-JSON_INSTRUCTION = "Respond with a single JSON object and nothing else. No prose, no code fences."
-REPAIR_SYSTEM = f"You fix malformed output. {JSON_INSTRUCTION}"
-REPAIR_USER = "Return only the JSON object contained in the following text:\n\n"
+from procureai.llm.common import JSON_INSTRUCTION, complete_with_repair, extract_json  # noqa: F401  (re-exported)
 
 RETRY_STATUSES = frozenset({403, 429})
 RETRY_DELAYS_S = (2.0, 4.0)  # 3 attempts total
@@ -57,29 +54,9 @@ class GatewayLLMClient:
         max_tokens: int = 1024,
         json_mode: bool = False,
     ) -> LLMResult:
-        if json_mode:
-            system = f"{system.rstrip()}\n{JSON_INSTRUCTION}"
-        started = time.perf_counter()
-        payload = self._chat(system, user, max_tokens)
-        text = _assistant_text(payload)
+        return complete_with_repair(self._chat, system, user, max_tokens=max_tokens, json_mode=json_mode, backend="gateway")
 
-        parsed = None
-        if json_mode:
-            parsed = extract_json(text)
-            if parsed is None:
-                payload = self._chat(REPAIR_SYSTEM, REPAIR_USER + text, max_tokens)
-                text = _assistant_text(payload)
-                parsed = extract_json(text)
-
-        return LLMResult(
-            text=text,
-            parsed_json=parsed,
-            raw=payload,
-            cached=False,
-            latency_ms=int((time.perf_counter() - started) * 1000),
-        )
-
-    def _chat(self, system: str, user: str, max_tokens: int) -> dict[str, Any]:
+    def _chat(self, system: str, user: str, max_tokens: int) -> tuple[str, dict[str, Any]]:
         body = {
             "model": self.model,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -89,7 +66,8 @@ class GatewayLLMClient:
         encoded = json.dumps(body).encode("utf-8")
         if len(encoded) > self.settings.LLM_MAX_BODY_BYTES:
             raise LLMRequestTooLarge(len(encoded), self.settings.LLM_MAX_BODY_BYTES)
-        return self._post(encoded)
+        payload = self._post(encoded)
+        return _assistant_text(payload), payload
 
     def _post(self, encoded: bytes) -> dict[str, Any]:
         headers = {
@@ -116,48 +94,3 @@ class GatewayLLMClient:
 
 def _assistant_text(payload: dict[str, Any]) -> str:
     return (payload.get("message") or {}).get("content", "") or ""
-
-
-def extract_json(text: str) -> dict | None:
-    """Tolerant extractor: whole string first, then the first balanced {...} block.
-
-    Handles the usual drift (```json fences, a sentence before the object) without regex guesswork.
-    """
-    candidates = [text.strip()]
-    block = _first_object(text)
-    if block is not None:
-        candidates.append(block)
-    for candidate in candidates:
-        try:
-            value = json.loads(candidate)
-        except (json.JSONDecodeError, ValueError):
-            continue
-        if isinstance(value, dict):
-            return value
-    return None
-
-
-def _first_object(text: str) -> str | None:
-    start = text.find("{")
-    if start < 0:
-        return None
-    depth, in_string, escaped = 0, False, False
-    for i in range(start, len(text)):
-        ch = text[i]
-        if in_string:
-            if escaped:
-                escaped = False
-            elif ch == "\\":
-                escaped = True
-            elif ch == '"':
-                in_string = False
-            continue
-        if ch == '"':
-            in_string = True
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start : i + 1]
-    return None

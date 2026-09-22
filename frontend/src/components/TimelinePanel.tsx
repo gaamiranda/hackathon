@@ -97,11 +97,28 @@ function fmtChange(field: string, v: unknown): string {
   return field === 'budget' && typeof v === 'string' ? money(v) : String(v)
 }
 
+/** agent.finished carries `backend` = which LLM route answered (T10b, D11): the demo claim "every agent call
+ *  runs through OpenClaw" is checked row by row. Agents without an LLM (history lookup) carry none. */
+const BACKEND_LABEL: Record<string, { text: string; cls: string }> = {
+  openclaw: { text: 'via OpenClaw', cls: 'bg-emerald-900/50 text-emerald-100' },
+  gateway: { text: 'via gateway', cls: 'bg-amber-900/50 text-amber-100' },
+  replay: { text: 'via replay', cls: 'bg-zinc-800 text-zinc-300' },
+  template: { text: 'templated', cls: 'bg-zinc-800 text-zinc-400' },
+  mock: { text: 'mock', cls: 'bg-zinc-800 text-zinc-400' },
+}
+
+function backendOf(event: WorkflowEvent): { text: string; cls: string } | null {
+  if (event.type !== 'agent.finished' || typeof event.payload.backend !== 'string') return null
+  const b = event.payload.backend as string
+  return BACKEND_LABEL[b] ?? { text: `via ${b}`, cls: 'bg-zinc-800 text-zinc-300' }
+}
+
 function EventRow({ event }: { event: WorkflowEvent }) {
   const [open, setOpen] = useState(false)
   const a = ACTOR[event.actor]
   const transition = event.state_before !== event.state_after
   const agent = typeof event.payload.agent === 'string' ? (event.payload.agent as string) : null
+  const backend = backendOf(event)
   const replan = REPLAN_TYPES.has(event.type)
   const po = PO_TYPES.has(event.type)
   const negotiation = !replan && !po && isNegotiation(event.type)
@@ -156,6 +173,7 @@ function EventRow({ event }: { event: WorkflowEvent }) {
             <span className="mono text-zinc-500">{time(event.ts)}</span>
             <span className={`font-semibold ${a.text}`}>{agent ? `${a.label}:${agent}` : a.label}</span>
             <span className="mono text-zinc-400">{event.type}</span>
+            {backend && <span className={`mono rounded px-1.5 py-0.5 text-[10px] ${backend.cls}`} title="LLM route that served this agent call">{backend.text}</span>}
             {transition && (
               <span className="mono ml-auto text-zinc-500">
                 {event.state_before ?? '∅'} → <span className="text-zinc-200">{event.state_after}</span>

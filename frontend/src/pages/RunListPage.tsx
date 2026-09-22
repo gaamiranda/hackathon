@@ -78,7 +78,8 @@ export function RunListPage() {
         right={
           health && (
             <span className="mono text-xs text-zinc-500">
-              backend: {health.mode} · llm {health.llm_gateway} · judge {health.guardrail_judge}
+              backend: {health.mode} · llm {health.llm_gateway} · via {health.llm_backend}
+              {health.llm_backend === 'openclaw' && <span className={health.openclaw === 'reachable' ? 'text-emerald-400' : 'text-red-400'}> ({health.openclaw})</span>} · judge {health.guardrail_judge}
             </span>
           )
         }

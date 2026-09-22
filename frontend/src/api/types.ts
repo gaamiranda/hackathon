@@ -336,6 +336,9 @@ export interface InterruptInput {
 export interface Health {
   mode: 'mock' | 'live'
   llm_gateway: string
+  /** Route live agent calls take (D11): OpenClaw on the Lightsail box, or the organiser gateway directly. */
+  llm_backend: 'gateway' | 'openclaw'
+  /** unconfigured | configured (token present, gateway route) | reachable | unreachable (2 s probe when OpenClaw is the route). */
   openclaw: string
   /** Guardrail judge (D20, T14): deterministic mock or TypeSafe Jev (replayed from cache when recorded). */
   guardrail_judge: 'mock' | 'jev'

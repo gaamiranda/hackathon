@@ -3,7 +3,7 @@
 import json
 
 from procureai.llm.base import LLMResult
-from procureai.llm.gateway import extract_json
+from procureai.llm.common import extract_json
 
 
 class MockLLMClient:
@@ -39,4 +39,4 @@ class MockLLMClient:
         text, parsed = self.by_task.get(task, (self.text, self.parsed_json))
         if json_mode and parsed is None:
             parsed = extract_json(text)
-        return LLMResult(text=text, parsed_json=parsed if json_mode else None, raw={}, cached=False, latency_ms=0)
+        return LLMResult(text=text, parsed_json=parsed if json_mode else None, raw={}, cached=False, latency_ms=0, backend="mock")

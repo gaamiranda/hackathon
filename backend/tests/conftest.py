@@ -13,3 +13,5 @@ os.environ["JUDGE_CACHE_MODE"] = "replay_only"  # Jev verdicts replay from data/
 os.environ.setdefault("GUARDRAIL_JUDGE", "mock")
 os.environ["LLM_GATEWAY_URL"] = ""
 os.environ["LLM_GATEWAY_API_KEY"] = ""
+os.environ["OPENCLAW_TOKEN"] = ""  # a laptop .env may hold the real token; /health must read "unconfigured" here (T10b)
+os.environ.setdefault("LLM_BACKEND", "gateway")

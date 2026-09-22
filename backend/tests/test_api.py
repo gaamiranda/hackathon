@@ -39,7 +39,7 @@ def create(client: TestClient) -> str:
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"mode": "mock", "llm_gateway": "unconfigured", "openclaw": "unconfigured",
+    assert r.json() == {"mode": "mock", "llm_gateway": "unconfigured", "llm_backend": "gateway", "openclaw": "unconfigured",
                         "guardrail_judge": "mock", "judge_model": None, "runs": 0}
 
 

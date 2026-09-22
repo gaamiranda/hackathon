@@ -1,4 +1,4 @@
-"""LLM access layer: one gateway client, one record/replay cache, one mock (PLAN.md §2)."""
+"""LLM access layer: gateway + OpenClaw clients with fallback, one record/replay cache, one mock (PLAN.md §2, D11)."""
 
 from procureai.llm.base import (
     LLMCacheMiss,
@@ -9,11 +9,15 @@ from procureai.llm.base import (
     LLMUnavailable,
 )
 from procureai.llm.cache import ReplayCache, cache_key
+from procureai.llm.common import extract_json
 from procureai.llm.factory import build_llm_client
-from procureai.llm.gateway import GatewayLLMClient, extract_json
+from procureai.llm.fallback import FallbackLLMClient
+from procureai.llm.gateway import GatewayLLMClient
 from procureai.llm.mock import MockLLMClient
+from procureai.llm.openclaw import OpenClawLLMClient
 
 __all__ = [
+    "FallbackLLMClient",
     "GatewayLLMClient",
     "LLMCacheMiss",
     "LLMClient",
@@ -22,6 +26,7 @@ __all__ = [
     "LLMResult",
     "LLMUnavailable",
     "MockLLMClient",
+    "OpenClawLLMClient",
     "ReplayCache",
     "build_llm_client",
     "cache_key",

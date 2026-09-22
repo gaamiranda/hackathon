@@ -2,6 +2,7 @@
 
 Cache files are committed, so tests and demos replay real gateway responses without spending tokens.
 Key = sha256(model, task, system, user, max_tokens, json_mode); files live in data/llm_cache/<task>/<key>.json.
+The key never includes which route answered (direct gateway or OpenClaw, D11): same task text → same entry.
 """
 
 import hashlib
@@ -70,6 +71,7 @@ def _load(path: Path) -> LLMResult:
         raw=result.get("raw", {}),
         cached=True,
         latency_ms=result.get("latency_ms", 0),
+        backend="replay",
     )
 
 
@@ -98,6 +100,7 @@ def _store(
             "parsed_json": result.parsed_json,
             "raw": result.raw,
             "latency_ms": result.latency_ms,
+            "backend": result.backend,  # informational only; not part of the key
         },
     }
     path.write_text(json.dumps(entry, indent=2, ensure_ascii=False) + "\n")

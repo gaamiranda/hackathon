@@ -40,18 +40,27 @@
       }
     },
     "raw": {
-      "model": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-      "created_at": "2026-09-19T07:24:32.763123Z",
-      "message": {
-        "role": "assistant",
-        "content": "```json\n{\n  \"supplier_name\": \"Cobalt Industrial\",\n  \"quote_reference\": \"CI-Q-7731\",\n  \"unit_price\": 13.40,\n  \"currency\": \"USD\",\n  \"quantity_quoted\": 2000,\n  \"moq\": 1000,\n  \"lead_time_days\": 9,\n  \"payment_terms\": \"50% upfront, 50% on delivery\",\n  \"shipping_cost\": 0,\n  \"discount_pct\": 0,\n  \"validity_date\": \"2026-10-15\",\n  \"capacity_units\": 10000,\n  \"llm_stated_total\": 26800.00,\n  \"confidence\": {\n    \"supplier_name\": 1.0,\n    \"quote_reference\": 1.0,\n    \"unit_price\": 1.0,\n    \"currency\": 1.0,\n    \"quantity_quoted\": 1.0,\n    \"moq\": 1.0,\n    \"lead_time_days\": 1.0,\n    \"payment_terms\": 1.0,\n    \"shipping_cost\": 1.0,\n    \"discount_pct\": 1.0,\n    \"validity_date\": 1.0,\n    \"capacity_units\": 1.0,\n    \"llm_stated_total\": 1.0\n  }\n}\n```"
-      },
-      "done": true,
-      "done_reason": "stop",
-      "total_duration": 0,
-      "prompt_eval_count": 665,
-      "eval_count": 341
+      "id": "chatcmpl_30139683-d0a7-4a24-9aee-f4f4f3a9fd4b",
+      "object": "chat.completion",
+      "created": 1790064297,
+      "model": "openclaw/procureai",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "```json\n{\n  \"supplier_name\": \"Cobalt Industrial\",\n  \"quote_reference\": \"CI-Q-7731\",\n  \"unit_price\": 13.40,\n  \"currency\": \"USD\",\n  \"quantity_quoted\": 2000,\n  \"moq\": 1000,\n  \"lead_time_days\": 9,\n  \"payment_terms\": \"50% upfront, 50% on delivery\",\n  \"shipping_cost\": 0,\n  \"discount_pct\": 0,\n  \"validity_date\": \"2026-10-15\",\n  \"capacity_units\": 10000,\n  \"llm_stated_total\": 26800.00,\n  \"confidence\": {\n    \"supplier_name\": 1.0,\n    \"quote_reference\": 1.0,\n    \"unit_price\": 1.0,\n    \"currency\": 1.0,\n    \"quantity_quoted\": 1.0,\n    \"moq\": 1.0,\n    \"lead_time_days\": 1.0,\n    \"payment_terms\": 1.0,\n    \"shipping_cost\": 1.0,\n    \"discount_pct\": 1.0,\n    \"validity_date\": 1.0,\n    \"capacity_units\": 1.0,\n    \"llm_stated_total\": 1.0\n  }\n}\n```"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 4214,
+        "completion_tokens": 341,
+        "total_tokens": 4555
+      }
     },
-    "latency_ms": 3917
+    "latency_ms": 4517,
+    "backend": "openclaw"
   }
 }

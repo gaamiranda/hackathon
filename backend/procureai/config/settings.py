@@ -21,10 +21,17 @@ class Settings(BaseSettings):
     # replay_or_record = spend a token only on a cache miss; replay_only = offline/CI (PLAN.md risk 2b)
     LLM_CACHE_MODE: Literal["replay_or_record", "record", "replay_only"] = "replay_or_record"
     LLM_TIMEOUT_S: float = 60
-    LLM_MAX_BODY_BYTES: int = 7000  # WAF rejects ~8 KiB; headroom for the JSON envelope (docs/INFRA.md)
+    # Our own payload cap. The starter kit's ~8 KiB WAF limit does not apply: OpenClaw sends 52–60 KB turns to the
+    # same gateway successfully (docs/OPENCLAW.md), so 32000 leaves room for a 6000-char document plus the prompt.
+    LLM_MAX_BODY_BYTES: int = 32000
 
-    OPENCLAW_GATEWAY_URL: str = ""
-    OPENCLAW_TOKEN: str = ""
+    # D11 option C: MODE=live routes every agent call through OpenClaw's /v1/chat/completions on the Lightsail box
+    # (dedicated tool-less `procureai` agent) with the direct gateway as automatic fallback; "gateway" = as before.
+    LLM_BACKEND: Literal["gateway", "openclaw"] = "gateway"
+    OPENCLAW_URL: str = "http://127.0.0.1:18789"  # loopback on the box; locally via `just tunnel`
+    OPENCLAW_TOKEN: str = ""  # gateway.auth.token from ~/.openclaw/openclaw.json on the box; backend/.env only
+    OPENCLAW_MODEL: str = "openclaw/procureai"  # an agent target, not a provider model (docs/OPENCLAW.md Q1)
+    OPENCLAW_TIMEOUT_S: float = 90
 
     # Guardrail judge (PLAN.md D20, T14): TypeSafe Jev answers typed yes/no questions with probabilities; it never
     # generates text or decides anything. The mock keeps the pipeline identical without credentials or network.

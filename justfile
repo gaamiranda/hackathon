@@ -55,6 +55,14 @@ extract-live *ARGS:
 judge-live *ARGS:
     cd backend && uv run python scripts/judge_live.py {{ ARGS }}
 
+# SSH tunnel to the OpenClaw gateway on the Lightsail box: local :18789 → box 127.0.0.1:18789 (keep it running; Ctrl-C stops it)
+tunnel:
+    ssh -N -L 18789:127.0.0.1:18789 -i ~/.ssh/LightsailDefaultKey-ap-southeast-1.pem ubuntu@47.129.120.76
+
+# Reverse tunnel for the OpenClaw skills: box 127.0.0.1:8000 → your local backend on :8000 (until the backend is deployed there, T10c)
+tunnel-reverse:
+    ssh -N -R 8000:127.0.0.1:8000 -i ~/.ssh/LightsailDefaultKey-ap-southeast-1.pem ubuntu@47.129.120.76
+
 # Week 1 demo over HTTP against a running backend
 demo:
     cd backend && uv run python scripts/demo_week1.py

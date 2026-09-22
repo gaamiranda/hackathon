@@ -44,6 +44,9 @@ class LiveDecisionAgent:
         self.llm_fast = llm_fast or llm  # change explanations on LLM_MODEL_FAST when the factory provides it
         self.settings = settings
         self.fallback = MockDecisionAgent()
+        # Route that served the last explain() (LLMResult.backend, D11); "template" when every call fell back
+        # to canned text. Read by the orchestrator for the agent.finished payload.
+        self.last_backend: str | None = None
 
     def explain(
         self,
@@ -57,6 +60,7 @@ class LiveDecisionAgent:
         before: list[Scorecard] | None = None,
     ) -> Explanation:
         templated = self.fallback.explain(request, scorecards, validated, diff_lines)
+        self.last_backend = "template"
 
         payload = self.rationale_input(request, scorecards, validated, profiles or {}, weights)
         answer = self._ask(self.llm, RATIONALE_TASK, RATIONALE_SYSTEM, payload, RATIONALE_MAX_TOKENS, RATIONALE_KEYS)
@@ -158,6 +162,7 @@ class LiveDecisionAgent:
         except (LLMUnavailable, LLMRequestTooLarge) as exc:  # G6: templated text keeps the run alive
             log.warning("decision agent %s: gateway unavailable (%s); using templated text", task, exc)
             return None
+        self.last_backend = result.backend
         answer = result.parsed_json
         if not isinstance(answer, dict) or not isinstance(answer.get(keys[0]), str) or not answer[keys[0]].strip():
             log.warning("decision agent %s: no usable JSON in the response; using templated text", task)

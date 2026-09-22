@@ -242,6 +242,27 @@ def test_orchestrator_reaches_recommended_on_recorded_extractions(replay_agent, 
     assert run.recommendation.ranked == ["sup_b", "sup_c", "sup_a"]
 
 
+def test_agent_finished_carries_the_llm_backend(replay_agent, request_, config):
+    """War Room label (T10b, D11): the route that served each LLM-backed agent rides on agent.finished;
+    agents without an LLM (supplier history lookup) carry no backend at all."""
+    agents = {
+        "document": replay_agent,
+        "supplier_intel": MockSupplierIntelAgent(),
+        "decision": MockDecisionAgent(),
+    }
+    orch = Orchestrator(agents, RunStore(), now=lambda: datetime(2026, 9, 19, tzinfo=timezone.utc))
+    run = orch.create_run(request_, config)
+    run = orch.add_documents(run.run_id, [as_document(SYNTHETIC / DOCS[1])])  # Borealis: clean maths, no gate
+    run = orch.run_evaluation(run.run_id)
+    assert run.state is S.RECOMMENDED
+
+    finished = {e.payload["agent"]: e.payload for e in orch.store.events(run.run_id) if e.type == "agent.finished"}
+    assert finished["document"]["backend"] == "replay", "recorded gateway answers replay from data/llm_cache/"
+    assert replay_agent.last_backend == "replay"
+    assert "decision" in finished and "backend" not in finished["decision"], "the mock decision agent has no LLM route"
+    assert all("backend" not in p for a, p in finished.items() if a != "document")
+
+
 def test_live_factory_builds_the_document_agent_on_a_cached_gateway():
     agents = build_agents(Settings(MODE="live", LLM_GATEWAY_URL="https://gateway.invalid"))
     assert isinstance(agents["document"], LiveDocumentAgent)

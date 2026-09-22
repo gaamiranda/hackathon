@@ -955,7 +955,11 @@ class Orchestrator:
         self._emit(run, EventActor.AGENT, "agent.started", summary, {"agent": agent, **(payload or {})})
 
     def _agent_finished(self, run: Run, agent: str, summary: str, payload: dict[str, Any] | None = None) -> None:
-        self._emit(run, EventActor.AGENT, "agent.finished", summary, {"agent": agent, **(payload or {})})
+        # `backend` = which LLM route answered ("openclaw" / "gateway" / "replay" / "template", D11); only the
+        # LLM-backed agents expose last_backend, so supplier_intel and the templated negotiation carry none.
+        backend = getattr(self.agents.get(agent), "last_backend", None)
+        extra = {"backend": backend} if backend else {}
+        self._emit(run, EventActor.AGENT, "agent.finished", summary, {"agent": agent, **extra, **(payload or {})})
 
     def _save(self, run: Run) -> Run:
         return self.store.put(run)

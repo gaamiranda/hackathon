@@ -23,7 +23,10 @@ class LLMRequestTooLarge(LLMError):
 
 
 class LLMUnavailable(LLMError):
-    """Gateway refused or failed after the retry budget (403 rate limit, 429 quota, 5xx, transport)."""
+    """Gateway refused or failed after the retry budget (403 rate limit, 429 quota, 5xx, transport).
+
+    Also raised by OpenClawLLMClient on connection refused / timeout / 5xx, which is what makes
+    FallbackLLMClient switch to the direct gateway (D11)."""
 
     def __init__(self, message: str, *, status: int | None = None) -> None:
         super().__init__(message)
@@ -41,6 +44,9 @@ class LLMResult:
     raw: dict = field(default_factory=dict)
     cached: bool = False
     latency_ms: int = 0
+    # Who actually answered (D11): "gateway" (organiser gateway directly), "openclaw" (OpenClaw agent on the
+    # Lightsail box, which calls the same gateway), "replay" (data/llm_cache/), "mock". Never part of the cache key.
+    backend: str = "gateway"
 
 
 @runtime_checkable

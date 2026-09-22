@@ -76,11 +76,36 @@ numbers 1 to 400 returned a string ending mid-sequence at "127 " with `done_reas
 
 ## Body size limit
 
-*Untested* — the ~8 KiB WAF limit comes from the starter kit, and deliberately was not probed (a
-rejected oversized request risks tripping rate limiting on a shared key). The client enforces
-`LLM_MAX_BODY_BYTES = 7000` bytes on the serialised body and raises `LLMRequestTooLarge` **before**
-sending. For reference, the three synthetic quotes produce bodies of 852–1,427 bytes, so there is ~5x
-headroom on the demo path.
+**Corrected in T10a/T10b (2026-09-22):** the ~8 KiB WAF limit from the starter kit does not apply to
+this gateway. OpenClaw sends 52–60 KB turns to the same `/api/chat` and gets 200 (docs/OPENCLAW.md), so
+the real limit is > 60 KB. `LLM_MAX_BODY_BYTES` is now our own cap, default **32000** bytes, enforced on
+the serialised body by both clients (`LLMRequestTooLarge` raised **before** sending). The three synthetic
+quotes produce bodies of 852–1,427 bytes and a full 6,000-char document about 8 KB, so the demo path has
+plenty of headroom either way.
+
+## Native tool calls
+
+**Corrected in T10a:** the gateway does return native Ollama tool calls (`done_reason: "tool_calls"`,
+`message.tool_calls[...]`) for `stream` true and false; OpenClaw's tool use runs on it. Our design still
+does its own tool loop in the backend (PLAN.md §2): every backend call is a single-shot JSON task with no
+`tools` array.
+
+## Two routes to the same gateway (T10b, PLAN.md D11)
+
+`LLM_BACKEND=gateway` (default) posts to `/api/chat` directly. `LLM_BACKEND=openclaw` posts the same two
+messages to OpenClaw's OpenAI-compatible `POST {OPENCLAW_URL}/v1/chat/completions` on the Lightsail box
+(`Authorization: Bearer $OPENCLAW_TOKEN`, `model: openclaw/procureai`, no `user` field so every request is a
+fresh session), and OpenClaw's `procureai` agent calls this gateway. That agent has `tools.profile: minimal`
+plus a deny list (exec, write, edit, apply_patch, process, web_fetch, browser), no bootstrap files, no memory
+search — untrusted supplier text passes through it. Measured (T10b): ~3.6 k prompt tokens per call versus
+~15 k on the default agent; a `max_tokens` in the request is **not** a hard cap through OpenClaw (a 200-token
+request produced 278 tokens), the agent's `params.num_predict: 2048` is what protects against truncation.
+Connection refused / timeout / 5xx from OpenClaw → `LLMUnavailable` → `FallbackLLMClient` answers once from
+the direct gateway and marks the result `backend: "gateway"`. The replay cache sits outside the pair and its
+key does not include the route, so `data/llm_cache/` entries replay on both. Locally the box is reached
+through `just tunnel` (`ssh -N -L 18789:127.0.0.1:18789 ubuntu@47.129.120.76`); `/health` reports
+`llm_backend` and `openclaw: unconfigured | configured | reachable | unreachable` (2 s probe of OpenClaw's
+`GET /health`, only when OpenClaw is the active route).
 
 ## Rate limiting / quota
 

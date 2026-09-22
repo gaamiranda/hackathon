@@ -55,6 +55,7 @@ class LiveDocumentAgent:
         self.llm = llm
         self.aliases = load_aliases() if aliases is None else aliases
         self.max_text_chars = max_text_chars
+        self.last_backend: str | None = None  # LLMResult.backend of the last extract(), for agent.finished (D11)
 
     def extract(self, doc: RawDocument) -> NormalizedQuote:
         text = doc.text
@@ -67,6 +68,7 @@ class LiveDocumentAgent:
         result = self.llm.complete(
             TASK, SYSTEM, build_user_message(text), max_tokens=MAX_TOKENS, json_mode=True
         )
+        self.last_backend = result.backend
         if result.parsed_json is None:
             log.warning("%s: model returned no JSON; escalating to human extraction", doc.filename)
             return self._unreadable(doc, text)

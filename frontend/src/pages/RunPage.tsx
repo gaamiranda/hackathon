@@ -92,7 +92,18 @@ export function RunPage() {
           </span>
         )}
         {health && (
-          <span className="mono ml-auto flex items-center gap-1 text-xs text-zinc-500" title={health.judge_model ? `model ${health.judge_model}` : 'deterministic mock judge'}>
+          <span
+            className="mono ml-auto text-xs text-zinc-500"
+            title={health.llm_backend === 'openclaw' ? `OpenClaw gateway ${health.openclaw}; direct gateway is the fallback` : 'organiser LLM gateway, called directly'}
+          >
+            LLM via{' '}
+            <span className={health.llm_backend === 'openclaw' ? (health.openclaw === 'reachable' ? 'text-emerald-300' : 'text-red-300') : 'text-zinc-300'}>
+              {health.llm_backend === 'openclaw' ? `OpenClaw (${health.openclaw})` : 'gateway'}
+            </span>
+          </span>
+        )}
+        {health && (
+          <span className="mono flex items-center gap-1 text-xs text-zinc-500" title={health.judge_model ? `model ${health.judge_model}` : 'deterministic mock judge'}>
             <Shield className={health.guardrail_judge === 'jev' ? 'text-emerald-400' : 'text-zinc-500'} />
             Guardrail judge: <span className={health.guardrail_judge === 'jev' ? 'text-emerald-300' : 'text-zinc-300'}>{health.guardrail_judge}</span>
           </span>
