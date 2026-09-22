@@ -1,7 +1,7 @@
 # PLAN.md — ProcureAI: The Autonomous Procurement War Room
 
 Source of truth for the 3-week AWS AI Agents hackathon. Coding agents: read this file first.
-Last updated: 2026-09-22 (Week 2 day 1; starter kit: github.com/kenken64/ShowMeYourAgent-Starter-Kit). Owner: main planning agent.
+Last updated: 2026-09-22 (planned scope complete; starter kit: github.com/kenken64/ShowMeYourAgent-Starter-Kit). Owner: main planning agent.
 
 ---
 
@@ -155,9 +155,11 @@ All models are pydantic v2; JSON schemas exported to `backend/domain/schema/*.js
 
 ## 8. Current implementation status (2026-09-19)
 
-Everything in the target demo (§15) works end to end in `MODE=mock` from the browser: request → 3 documents → mismatch gate → recommendation → 4 negotiation approvals with policy-checked edits → interrupt 2,000 → 5,000 → recommendation flips Borealis → Cobalt with an impact card → PO gate → downloadable PDF. Live mode is proven for extraction only. 137 backend tests, frontend builds clean. Deployed live at http://47.129.120.76/ through OpenClaw with the Jev judge; verified end to end in the browser. Not started: Jev judge, OpenClaw, Lightsail deployment.
+Everything in the target demo (§15) works end to end in `MODE=mock` from the browser: request → 3 documents → mismatch gate → recommendation → 4 negotiation approvals with policy-checked edits → interrupt 2,000 → 5,000 → recommendation flips Borealis → Cobalt with an impact card → PO gate → downloadable PDF. Live mode is proven for extraction only. 137 backend tests, frontend builds clean. Deployed live at http://47.129.120.76/ through OpenClaw with the Jev judge; verified end to end in the browser; survives restarts and a dead LLM. Feature-complete for the demo as of Sep 22. Remaining: demo hardening (T18), then stretch. Not started: Jev judge, OpenClaw, Lightsail deployment.
 
 ## 9. Completed tasks
+- T18 (2026-09-22): UI preset dates now UTC-stable (Singapore evening runs produced a 15-day window and cache misses); prompt-stability tests across fake dates; seed_demo.py (`just seed STAGE`, any stage in ~1 s against the box), `just demo-reset`; preflight.sh + docs/PREFLIGHT.md (15 checks, all PASS); docs/DRILLS.md with 7 drills executed for real, one defect fixed (stale "degraded" banner after OpenClaw restart now clears via probe); nginx 413 page is a known cosmetic issue. 253 tests. PLANNED SCOPE COMPLETE.
+- T17 (2026-09-22): fail-safe manual mode: /health llm ok|degraded|down from RouteTracker + cached probes; llm_unavailable extraction → full manual quote form with document text; correct_quote accepts a whole quote and resolves supplier aliases; GET /comparison matrix + Compare tab (engine numbers only); degraded/down banners; `just demo-manual`. Manual run reproduces the exact mock numbers. 248 tests.
 - T16 (2026-09-22): agent lanes (derived from the event stream), moment cards for the 10 guardrail/decision moments, timeline filters + paused auto-scroll, summary strip with the WAITING FOR HUMAN pill, score bars, replan banner, one-line quote cards, empty/error states, copy pass; backend agent.failed on LLM fallbacks (guard_trip|parse_error|llm_unavailable) and GET /runs/{id}/summary; docs/screenshots/01–05 for the slides. 239 tests.
 - T19 (2026-09-22): FileRunRepository (run.json atomic replace + events.jsonl append, fsync) behind RunStore, RUN_STORE_DIR (set on the box), restore on startup with transient-state recovery (run.recovered event), seq continuity, corrupt-dir skip; deploy.sh protects data/runs; `just clear-runs`. ~7 ms per event on the box. Verified: a run survives a backend restart on Lightsail. 232 tests.
 - T10c (2026-09-22): RULES_REMINDER at the end of both decision user messages → all rationales pass the guard via OpenClaw (5 re-records); OPENCLAW_TASKS per-task routing as emergency pin; deployed at http://47.129.120.76/ (nginx → SPA + /api proxy with SSE-safe settings; user unit procureai-backend.service; 8000/18789 closed); docs/DEPLOY.md, scripts/deploy.sh, `just deploy`. Box after a full run: 2.7 GB available, backend 95 MB, OpenClaw 568 MB. 213 tests.
@@ -230,6 +232,7 @@ Supplier id convention: `sup_a`, `sup_b`, `sup_c`. Team: one developer so far; l
 - D27 Coding agents never commit; the developer commits after review. Every prompt says so.
 - D28 Judge as built (T14): judge only lowers confidence (never raises) and only for fields currently above the gate; cache miss in replay_only yields "not evaluated"; thresholds 0.6 / 0.7 / 0.7 untouched. All three roles kept after live validation.
 - D29 OpenClaw route and the number guard (T10b finding): OpenClaw wraps our system message inside its own ~3k-token assistant prompt, which diluted the "only input numbers" rule; all three rationales tripped the G1 guard and fell back to templated text (extractions and change explanations were fine). Fix (T10c step 0): repeat the numbers rule at the END of the user message for both decision prompts (harmless on the direct route), re-record, and add per-task routing `OPENCLAW_TASKS` (default all) so any task that still fails can be pinned to the direct gateway. The guard itself stays; it did its job.
+- D31 Demo slot is 30 minutes (2026-09-22): ~18 min presentation (architecture 3, core run 10, break-it-on-purpose 4, evidence/code 3) + Q&A. Script in docs/DEMO.md. The "break it" segment is rehearsed as drills in T18.
 - D30 Demo LLM mode: the final demo runs live through OpenClaw for the 8 LLM calls (~45 s total, acceptable with the timeline visible), with the replay cache as the automatic safety net if the gateway or box misbehaves. Decided in T18 after a dry run.
 - D12 Deployment target: AWS Lightsail Ubuntu 24.04, ap-southeast-1, 4 GB plan, same box as OpenClaw. Develop locally; deploy in Week 3. Live LLM calls kept minimal to preserve the USD 100 credit.
 - D7 Negotiation scope: price and lead time only; max 2 turns per supplier enforced by the state machine, not the prompt.
