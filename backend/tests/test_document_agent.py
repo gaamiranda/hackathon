@@ -218,6 +218,39 @@ def test_orchestrator_routes_unusable_extraction_to_a_human(request_, config):
     assert set(run.pending_human.details["fields"][run.quotes[0].quote_id]) == set(CRITICAL_FIELDS)
 
 
+def test_unusable_extraction_is_surfaced_as_agent_failed_then_finished_with_fallback(request_, config):
+    """War Room lane (T16, D26): a fallback is visible as agent.failed {reason, detail} right before the normal
+    agent.finished, which carries fallback=true; a clean extraction carries neither."""
+    agent = LiveDocumentAgent(MockLLMClient("the document was blurry"))
+    agents = {"document": agent, "supplier_intel": MockSupplierIntelAgent(), "decision": MockDecisionAgent()}
+    orch = Orchestrator(agents, RunStore(), now=lambda: datetime(2026, 9, 19, tzinfo=timezone.utc))
+    run = orch.create_run(request_, config)
+    run = orch.add_documents(run.run_id, [as_document(SYNTHETIC / "supplier_a_apex.pdf")])
+    assert run.state is S.NEEDS_HUMAN_EXTRACTION
+
+    types = [e.type for e in orch.store.events(run.run_id)]
+    i = types.index("agent.failed")
+    assert types[i - 1 : i + 2] == ["agent.started", "agent.failed", "agent.finished"]
+    failed, finished = orch.store.events(run.run_id)[i], orch.store.events(run.run_id)[i + 1]
+    assert failed.actor == "agent"
+    assert failed.payload["agent"] == "document" and failed.payload["reason"] == "parse_error"
+    assert "supplier_a_apex.pdf" in failed.payload["detail"] and failed.payload["backend"] == "mock"
+    assert failed.summary == "LLM extraction unusable; routing the document to human extraction"
+    assert finished.payload["agent"] == "document" and finished.payload["fallback"] is True
+    assert agent.last_fallback == {"reason": "parse_error", "detail": failed.payload["detail"]}
+
+
+def test_clean_extraction_carries_no_fallback(replay_agent, request_, config):
+    agents = {"document": replay_agent, "supplier_intel": MockSupplierIntelAgent(), "decision": MockDecisionAgent()}
+    orch = Orchestrator(agents, RunStore(), now=lambda: datetime(2026, 9, 19, tzinfo=timezone.utc))
+    run = orch.create_run(request_, config)
+    run = orch.add_documents(run.run_id, [as_document(SYNTHETIC / DOCS[1])])
+    events = orch.store.events(run.run_id)
+    assert not [e for e in events if e.type == "agent.failed"]
+    assert all("fallback" not in e.payload for e in events if e.type == "agent.finished")
+    assert replay_agent.last_fallback is None
+
+
 def test_orchestrator_reaches_recommended_on_recorded_extractions(replay_agent, request_, config):
     """The whole Week 1 pipeline on real Claude output: Borealis wins, Apex's total mismatch is caught."""
     agents = {

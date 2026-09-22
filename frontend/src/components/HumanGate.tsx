@@ -2,15 +2,27 @@ import { useState } from 'react'
 import { api, ApiError } from '../api/client'
 import type { CalcMismatchDetail, NegotiationApprovalDetail, PoApprovalDetail, Run } from '../api/types'
 import { money } from '../format'
+import { gateLabel } from '../labels'
 import { TotalsTable } from './DecisionPanel'
 import { Button, ErrorLine } from './Panel'
 
-/** Human gates (PLAN.md G1/G5/G6): rendered from run.pending_human.kind. */
-export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
+/** Human gates (PLAN.md G1/G5/G6): rendered from run.pending_human.kind.
+ *  A negotiation draft / PO preview can be set aside to reach the Request panel (e.g. to inject a requirement
+ *  change, D22); the pending item stays on the backend and the bar below — or the summary strip's "waiting for
+ *  human" pill — reopens it. `minimised` is keyed per draft so a new one pops up on its own. */
+export function HumanGate({
+  run,
+  onRun,
+  minimised,
+  onMinimise,
+}: {
+  run: Run
+  onRun: (r: Run) => void
+  minimised: string | null
+  onMinimise: (key: string | null) => void
+}) {
   const pending = run.pending_human
-  // A negotiation draft can be set aside to reach the Request panel (e.g. to inject a requirement change, D22);
-  // the pending draft stays on the backend and the bar below reopens it. Keyed per draft so a new one pops up.
-  const [minimised, setMinimised] = useState<string | null>(null)
+  const setMinimised = onMinimise
   if (!pending) return null
   const draftKey =
     pending.kind === 'negotiation_approval'
@@ -43,7 +55,9 @@ export function HumanGate({ run, onRun }: { run: Run; onRun: (r: Run) => void })
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
       <div className="w-full max-w-2xl rounded-lg border border-amber-700 bg-zinc-900 p-5 shadow-2xl">
         <div className="mb-1 flex items-baseline justify-between">
-          <span className="text-xs font-semibold uppercase tracking-widest text-amber-400">Human review required · {pending.kind}</span>
+          <span className="text-xs font-semibold uppercase tracking-widest text-amber-400" title={`pending_human.kind = ${pending.kind}`}>
+            Human review required · {gateLabel(pending.kind)}
+          </span>
           {draftKey && (
             <button type="button" onClick={() => setMinimised(draftKey)} className="text-xs text-zinc-500 hover:text-zinc-300" title="set aside (e.g. to inject a requirement change); it stays pending">
               set aside ▾

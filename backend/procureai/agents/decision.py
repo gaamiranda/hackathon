@@ -53,6 +53,9 @@ class LiveDecisionAgent:
         # Route that served the last explain() (LLMResult.backend, D11); "template" when every call fell back
         # to canned text. Read by the orchestrator for the agent.finished payload.
         self.last_backend: str | None = None
+        # First fallback of the last explain(), {"reason": guard_trip|parse_error|llm_unavailable, "detail"}, or
+        # None when every call was used as answered (D26, T16). The orchestrator turns it into agent.failed.
+        self.last_fallback: dict[str, str] | None = None
 
     def explain(
         self,
@@ -67,6 +70,7 @@ class LiveDecisionAgent:
     ) -> Explanation:
         templated = self.fallback.explain(request, scorecards, validated, diff_lines)
         self.last_backend = "template"
+        self.last_fallback = None
 
         payload = self.rationale_input(request, scorecards, validated, profiles or {}, weights)
         answer = self._ask(self.llm, RATIONALE_TASK, RATIONALE_SYSTEM, payload, RATIONALE_MAX_TOKENS, RATIONALE_KEYS)
@@ -167,19 +171,26 @@ class LiveDecisionAgent:
             result = llm.complete(task, system, user, max_tokens=max_tokens, json_mode=True)
         except (LLMUnavailable, LLMRequestTooLarge) as exc:  # G6: templated text keeps the run alive
             log.warning("decision agent %s: gateway unavailable (%s); using templated text", task, exc)
+            self._fell_back("llm_unavailable", f"{task}: {exc}")
             return None
         self.last_backend = result.backend
         answer = result.parsed_json
         if not isinstance(answer, dict) or not isinstance(answer.get(keys[0]), str) or not answer[keys[0]].strip():
             log.warning("decision agent %s: no usable JSON in the response; using templated text", task)
+            self._fell_back("parse_error", f"{task}: no usable JSON in the response")
             return None
         text = " ".join(str(answer[k]) for k in keys if isinstance(answer.get(k), str))
         foreign = foreign_numbers(text, user)
         if foreign:
             log.warning("decision agent %s: response contains numbers not in the input %s; using templated text",
                         task, sorted(foreign))
+            self._fell_back("guard_trip", f"{task}: numbers not in the input: {', '.join(sorted(foreign))}")
             return None
         return answer
+
+    def _fell_back(self, reason: str, detail: str) -> None:
+        if self.last_fallback is None:  # the first fallback of an explain() is the one reported
+            self.last_fallback = {"reason": reason, "detail": detail}
 
     @staticmethod
     def _compose_rationale(answer: dict) -> str:

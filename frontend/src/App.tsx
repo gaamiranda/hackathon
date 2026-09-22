@@ -9,7 +9,8 @@ export default function App() {
         <Link to="/" className="text-sm font-semibold tracking-widest text-zinc-100">
           PROCURE<span className="text-emerald-400">AI</span>
         </Link>
-        <span className="text-xs text-zinc-500">war room · week 2</span>
+        <span className="text-xs font-medium tracking-wide text-zinc-400">Autonomous Procurement War Room</span>
+        <span className="ml-auto hidden text-[11px] text-zinc-600 md:inline">An auditable AI procurement team — humans approve every consequential action</span>
       </header>
       <Routes>
         <Route path="/" element={<RunListPage />} />

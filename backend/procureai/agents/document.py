@@ -56,6 +56,9 @@ class LiveDocumentAgent:
         self.aliases = load_aliases() if aliases is None else aliases
         self.max_text_chars = max_text_chars
         self.last_backend: str | None = None  # LLMResult.backend of the last extract(), for agent.finished (D11)
+        # {"reason": "parse_error", "detail"} when the last extract() returned the zero-confidence quote instead of
+        # what the model said, else None (T16: the orchestrator emits agent.failed before agent.finished).
+        self.last_fallback: dict[str, str] | None = None
 
     def extract(self, doc: RawDocument) -> NormalizedQuote:
         text = doc.text
@@ -65,18 +68,21 @@ class LiveDocumentAgent:
             )
             text = text[: self.max_text_chars]
 
+        self.last_fallback = None
         result = self.llm.complete(
             TASK, SYSTEM, build_user_message(text), max_tokens=MAX_TOKENS, json_mode=True
         )
         self.last_backend = result.backend
         if result.parsed_json is None:
             log.warning("%s: model returned no JSON; escalating to human extraction", doc.filename)
+            self.last_fallback = {"reason": "parse_error", "detail": f"{doc.filename}: model returned no JSON"}
             return self._unreadable(doc, text)
 
         try:
             return self._to_quote(doc, text, result.parsed_json)
         except (ValidationError, InvalidOperation, ValueError, TypeError) as exc:
             log.warning("%s: extraction did not validate (%s); escalating to human extraction", doc.filename, exc)
+            self.last_fallback = {"reason": "parse_error", "detail": f"{doc.filename}: extraction did not validate: {exc}"}
             return self._unreadable(doc, text)
 
     # ---------------------------------------------------------------- mapping

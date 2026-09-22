@@ -1,4 +1,4 @@
-import type { CreateRunInput, Health, InterruptInput, NegotiationThread, PurchaseOrder, Run, RunSummary, WorkflowEvent } from './types'
+import type { CreateRunInput, Health, InterruptInput, NegotiationThread, PurchaseOrder, Run, RunOverview, RunSummary, WorkflowEvent } from './types'
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
 
@@ -54,6 +54,9 @@ export const api = {
     request<{ run_id: string; run: Run }>('/runs', json('POST', { request: input })),
 
   getRun: (runId: string) => request<Run>(`/runs/${runId}`),
+
+  /** Header strip figures (T16); refetched on the same triggers as getRun. */
+  getOverview: (runId: string) => request<RunOverview>(`/runs/${runId}/summary`),
 
   uploadDocuments: (runId: string, files: File[]) => {
     const form = new FormData()

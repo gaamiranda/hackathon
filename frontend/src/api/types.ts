@@ -317,6 +317,22 @@ export interface RunSummary {
   created_at: string
 }
 
+/** GET /runs/{id}/summary (T16): the header strip. Every figure is copied from the Run, nothing is computed. */
+export interface RunOverview {
+  run_id: string
+  state: WorkflowState
+  product: string
+  quantity: number
+  version: number
+  recommended_supplier_id: string | null
+  recommended_name: string | null
+  total_score: number | null
+  landed_cost: Money | null
+  pending_human_kind: PendingHumanKind | null
+  po_number: string | null
+  counts: { documents: number; quotes: number; events: number; negotiations: number }
+}
+
 export interface CreateRunInput {
   product: string
   quantity: number

@@ -218,6 +218,42 @@ def test_unusable_or_absent_answer_falls_back_to_templated_text(llm, request_, c
     assert run.state == S.RECOMMENDED and run.recommendation.recommended_supplier_id == "sup_b"
 
 
+@pytest.mark.parametrize("llm, reason, summary", [
+    (MockLLMClient("Sorry, I cannot help with that."), "parse_error", "LLM returned no usable JSON; using deterministic text"),
+    (MockLLMClient(parsed_json={"rationale": "Borealis saves you 999,999.00 overall."}), "guard_trip",
+     "LLM output rejected by the number guard; using deterministic text"),
+    (_Down(), "llm_unavailable", "LLM gateway unavailable; using deterministic text"),
+], ids=["garbage", "guard", "unavailable"])
+def test_fallback_is_surfaced_as_agent_failed_then_finished_with_fallback(llm, reason, summary, request_, config):
+    """T16 / D26: every fallback shows up in the War Room as agent.failed {agent, reason, detail} immediately
+    followed by the usual agent.finished with fallback=true; the recommendation itself is unaffected."""
+    agents = build_agents(SETTINGS)
+    agents["decision"] = LiveDecisionAgent(llm, SETTINGS)
+    orch = Orchestrator(agents, RunStore())
+    run_id = recommended_run(orch, request_, config)
+
+    events = orch.store.events(run_id)
+    failed = [e for e in events if e.type == "agent.failed"]
+    assert len(failed) == 1 and failed[0].actor == "agent"
+    assert failed[0].payload["agent"] == "decision" and failed[0].payload["reason"] == reason
+    assert failed[0].payload["detail"].startswith("explain: ")
+    assert failed[0].summary == summary
+    following = events[events.index(failed[0]) + 1]
+    assert following.type == "agent.finished" and following.payload["agent"] == "decision"
+    assert following.payload["fallback"] is True
+    if reason == "guard_trip":
+        assert "999,999" in failed[0].payload["detail"] and following.payload["backend"] == "mock"
+    else:
+        assert following.payload["backend"] == ("mock" if reason == "parse_error" else "template")
+
+
+def test_replayed_rationale_carries_no_fallback(orch, request_, config):
+    run_id = recommended_run(orch, request_, config)
+    events = orch.store.events(run_id)
+    assert not [e for e in events if e.type == "agent.failed"]
+    assert all("fallback" not in e.payload for e in events if e.type == "agent.finished")
+
+
 def test_live_agent_is_selected_in_live_mode_only():
     assert isinstance(build_agents(Settings(MODE="mock"))["decision"], MockDecisionAgent)
     live = build_agents(Settings(MODE="live", LLM_GATEWAY_URL="http://gateway.invalid", LLM_GATEWAY_API_KEY="x"))["decision"]

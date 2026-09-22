@@ -70,6 +70,7 @@ from procureai.engine import (
 from procureai.engine.costing import pre_tax_total
 from procureai.engine.policy import PolicyResult, buyer_turns
 from procureai.guardrails.base import GuardrailJudge
+from procureai.llm.base import LLMUnavailable
 from procureai.sim import ScriptedSupplier, SupplierSim
 from procureai.workflow.errors import WorkflowError
 from procureai.workflow.events import EventBus
@@ -106,6 +107,20 @@ class _Replan:
     scorecards: list[Scorecard]
     recommended: str | None
     math_resolved: bool
+
+
+# agent.failed summaries for the fallback reasons a live agent reports via last_fallback (T16).
+FALLBACK_SUMMARY: dict[str, dict[str, str]] = {
+    "decision": {
+        "guard_trip": "LLM output rejected by the number guard; using deterministic text",
+        "parse_error": "LLM returned no usable JSON; using deterministic text",
+        "llm_unavailable": "LLM gateway unavailable; using deterministic text",
+    },
+    "document": {
+        "parse_error": "LLM extraction unusable; routing the document to human extraction",
+        "llm_unavailable": "LLM gateway unavailable; routing the document to human extraction",
+    },
+}
 
 
 class Orchestrator:
@@ -728,8 +743,9 @@ class Orchestrator:
         try:
             quote = self.agents["document"].extract(doc)
         except Exception as exc:  # G6: parse failure → human form, never crash the run
+            reason = "llm_unavailable" if isinstance(exc, LLMUnavailable) else "error"
             self._emit(run, EventActor.AGENT, "agent.failed", f"Document agent failed on {doc.filename}: {exc}",
-                       {"agent": agent, "doc_id": doc.doc_id, "error": str(exc)})
+                       {"agent": agent, "doc_id": doc.doc_id, "error": str(exc), "reason": reason, "detail": str(exc)})
             self._set_pending_extraction(run, {}, failed={doc.doc_id: str(exc)})
             return
         self._agent_finished(run, agent, f"Extracted {quote.supplier_name}: {quote.quantity_quoted} × {quote.unit_price} {quote.currency}",
@@ -959,6 +975,13 @@ class Orchestrator:
         # LLM-backed agents expose last_backend, so supplier_intel and the templated negotiation carry none.
         backend = getattr(self.agents.get(agent), "last_backend", None)
         extra = {"backend": backend} if backend else {}
+        # A live agent that used its deterministic fallback (number guard, unparseable answer, gateway down; D26/G6)
+        # says so on agent.failed first, then finishes normally with fallback=true.
+        fallback = getattr(self.agents.get(agent), "last_fallback", None)
+        if fallback:
+            self._emit(run, EventActor.AGENT, "agent.failed", FALLBACK_SUMMARY.get(agent, {}).get(fallback["reason"], fallback["detail"]),
+                       {"agent": agent, "reason": fallback["reason"], "detail": fallback["detail"], **extra})
+            extra["fallback"] = True
         self._emit(run, EventActor.AGENT, "agent.finished", summary, {"agent": agent, **extra, **(payload or {})})
 
     def _save(self, run: Run) -> Run:

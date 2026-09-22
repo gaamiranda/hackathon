@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { api, ApiError } from '../api/client'
-import type { Health, Run, WorkflowEvent } from '../api/types'
+import { API_URL, api, ApiError } from '../api/client'
+import type { Health, Run, RunOverview, WorkflowEvent } from '../api/types'
+import { AgentLanes } from '../components/AgentLanes'
 import { DecisionPanel } from '../components/DecisionPanel'
 import { HumanGate } from '../components/HumanGate'
+import { Button } from '../components/Panel'
 import { RequestPanel } from '../components/RequestPanel'
-import { Shield, TimelinePanel } from '../components/TimelinePanel'
+import { SummaryStrip } from '../components/SummaryStrip'
+import { TimelinePanel, type TimelineFilter } from '../components/TimelinePanel'
 import { useEventStream } from '../hooks/useEventStream'
+import type { LaneKey } from '../labels'
 
 /** Events after which the Run aggregate has changed in ways only GET /runs/{id} reveals. */
 const REFETCH_ON = new Set([
@@ -27,8 +31,12 @@ const REFETCH_ON = new Set([
 export function RunPage() {
   const { id } = useParams<{ id: string }>()
   const [run, setRun] = useState<Run | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [overview, setOverview] = useState<RunOverview | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
   const [health, setHealth] = useState<Health | null>(null)
+  const [filter, setFilter] = useState<TimelineFilter>('all')
+  // A negotiation draft / PO preview can be set aside to reach the Request panel; the summary strip reopens it.
+  const [gateMinimised, setGateMinimised] = useState<string | null>(null)
   useEffect(() => {
     api.health().then(setHealth).catch(() => setHealth(null))
   }, [])
@@ -41,10 +49,16 @@ export function RunPage() {
         setRun(r)
         setError(null)
       })
-      .catch((e: ApiError) => setError(e.message))
+      .catch((e: ApiError) => setError(e))
   }, [id])
 
   useEffect(refetch, [refetch])
+
+  // The header strip follows every fresh Run (refetch or an action's response): updated_at moves on each one.
+  useEffect(() => {
+    if (!id || !run) return
+    api.getOverview(id).then(setOverview).catch(() => undefined)
+  }, [id, run?.updated_at, run?.state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const onEvent = useCallback(
     (e: WorkflowEvent) => {
@@ -64,58 +78,47 @@ export function RunPage() {
     return map
   }, [events])
 
+  const names = useMemo(() => Object.fromEntries((run?.quotes ?? []).map((q) => [q.supplier_id, q.supplier_name])), [run?.quotes])
+
   if (error && !run) {
+    const notFound = error.status === 404
+    const unreachable = error.status === 0
     return (
-      <div className="p-6 text-sm">
-        <p className="text-red-300">{error}</p>
-        <Link to="/" className="text-emerald-400 hover:underline">
-          ← back to runs
-        </Link>
+      <div className="mx-auto mt-16 max-w-lg rounded-lg border border-zinc-800 bg-zinc-900/60 p-6 text-sm">
+        <h2 className="text-base font-semibold text-zinc-100">{notFound ? 'Run not found' : unreachable ? 'Backend unreachable' : 'Could not load this run'}</h2>
+        <p className="mt-2 text-zinc-400">
+          {notFound
+            ? `There is no run "${id}" on this backend. It may have been created before a restart without persistence, or the link is wrong.`
+            : unreachable
+              ? `Nothing is answering at ${API_URL}. Start the backend (just run) or check VITE_API_URL.`
+              : error.message}
+        </p>
+        <div className="mt-4 flex gap-2">
+          <Link to="/" className="rounded border border-zinc-700 px-3 py-1.5 text-zinc-200 hover:bg-zinc-800">
+            ← All runs
+          </Link>
+          {!notFound && <Button onClick={refetch}>Retry</Button>}
+        </div>
       </div>
     )
   }
   if (!run) return <div className="p-6 text-sm text-zinc-500">Loading run…</div>
 
+  const laneFilter: LaneKey | null = filter === 'all' || filter === 'moments' ? null : filter
+
   return (
     <div className="flex h-[calc(100vh-49px)] flex-col">
-      <div className="flex items-center gap-3 border-b border-zinc-800 px-4 py-2 text-sm">
-        <Link to="/" className="text-zinc-400 hover:text-zinc-200">
-          ← runs
-        </Link>
-        <span className="mono text-zinc-500">{run.run_id}</span>
-        <span className="text-zinc-300">
-          {run.request.quantity.toLocaleString()} × {run.request.product}
-        </span>
-        {run.request.version > 1 && (
-          <span className="mono rounded bg-red-900/60 px-1.5 text-xs font-semibold text-red-200" title="request version (incremented by every interrupt)">
-            v{run.request.version}
-          </span>
-        )}
-        {health && (
-          <span
-            className="mono ml-auto text-xs text-zinc-500"
-            title={health.llm_backend === 'openclaw' ? `OpenClaw gateway ${health.openclaw}; direct gateway is the fallback` : 'organiser LLM gateway, called directly'}
-          >
-            LLM via{' '}
-            <span className={health.llm_backend === 'openclaw' ? (health.openclaw === 'reachable' ? 'text-emerald-300' : 'text-red-300') : 'text-zinc-300'}>
-              {health.llm_backend === 'openclaw' ? `OpenClaw (${health.openclaw})` : 'gateway'}
-            </span>
-          </span>
-        )}
-        {health && (
-          <span className="mono flex items-center gap-1 text-xs text-zinc-500" title={health.judge_model ? `model ${health.judge_model}` : 'deterministic mock judge'}>
-            <Shield className={health.guardrail_judge === 'jev' ? 'text-emerald-400' : 'text-zinc-500'} />
-            Guardrail judge: <span className={health.guardrail_judge === 'jev' ? 'text-emerald-300' : 'text-zinc-300'}>{health.guardrail_judge}</span>
-          </span>
-        )}
-        {error && <span className={`text-xs text-red-300 ${health ? '' : 'ml-auto'}`}>{error}</span>}
-      </div>
-      <div className="grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)_420px] gap-3 p-3">
+      <SummaryStrip runId={run.run_id} overview={overview} state={run.state} currency={run.request.currency} health={health} onOpenGate={() => setGateMinimised(null)} />
+      {error && <div className="border-b border-red-900 bg-red-950/50 px-4 py-1 text-xs text-red-200">{error.message}</div>}
+      <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)_380px] min-[1400px]:grid-cols-[350px_minmax(0,1fr)_400px] gap-3 p-3">
         <RequestPanel run={run} onRun={setRun} quoteByDoc={quoteByDoc} />
-        <TimelinePanel events={events} status={status} state={run.state} />
+        <div className="flex min-h-0 flex-col gap-2">
+          <AgentLanes events={events} state={run.state} pending={run.pending_human} selected={laneFilter} onSelect={(k) => setFilter(k ?? 'all')} />
+          <TimelinePanel events={events} status={status} state={run.state} names={names} filter={filter} onFilter={setFilter} />
+        </div>
         <DecisionPanel run={run} onRun={setRun} events={events} />
       </div>
-      <HumanGate run={run} onRun={setRun} />
+      <HumanGate run={run} onRun={setRun} minimised={gateMinimised} onMinimise={setGateMinimised} />
     </div>
   )
 }

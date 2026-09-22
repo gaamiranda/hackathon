@@ -65,6 +65,30 @@ class RunSummary(BaseModel):
     created_at: datetime
 
 
+class RunCounts(BaseModel):
+    documents: int
+    quotes: int
+    events: int
+    negotiations: int
+
+
+class RunOverview(BaseModel):
+    """Header strip of the War Room (T16): the few figures a viewer needs at a glance, derived from the Run."""
+
+    run_id: str
+    state: str
+    product: str
+    quantity: int
+    version: int
+    recommended_supplier_id: str | None
+    recommended_name: str | None
+    total_score: float | None
+    landed_cost: Money | None
+    pending_human_kind: str | None
+    po_number: str | None
+    counts: RunCounts
+
+
 class EmailDocumentBody(BaseModel):
     email_text: str
     filename: str = "email.txt"
@@ -175,6 +199,34 @@ def list_runs(orch: Orchestrator = Depends(get_orchestrator)) -> list[RunSummary
 @router.get("/{run_id}", response_model=Run)
 def get_run(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> Run:
     return orch.store.get(run_id)
+
+
+@router.get("/{run_id}/summary", response_model=RunOverview)
+def get_run_overview(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> RunOverview:
+    """Compact view for the War Room header (T16). Nothing here is computed: every figure is copied from the Run."""
+    run = orch.store.get(run_id)
+    top = run.recommendation.recommended_supplier_id if run.recommendation else None
+    card = next((c for c in run.scorecards if c.supplier_id == top), None) if top else None
+    quote = next((q for q in run.quotes if q.supplier_id == top), None) if top else None
+    return RunOverview(
+        run_id=run.run_id,
+        state=run.state,
+        product=run.request.product,
+        quantity=run.request.quantity,
+        version=run.request.version,
+        recommended_supplier_id=top,
+        recommended_name=quote.supplier_name if quote else None,
+        total_score=card.total_score if card else None,
+        landed_cost=card.landed_cost if card else None,
+        pending_human_kind=run.pending_human.kind if run.pending_human else None,
+        po_number=run.purchase_order.po_number if run.purchase_order else None,
+        counts=RunCounts(
+            documents=len(run.documents),
+            quotes=len(run.quotes),
+            events=len(orch.store.events(run.run_id)),
+            negotiations=len(run.negotiations),
+        ),
+    )
 
 
 @router.post("/{run_id}/documents", response_model=Run)

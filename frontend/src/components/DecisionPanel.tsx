@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { NegotiationOffer, NegotiationStatus, NegotiationThread, NegotiationTurn, PurchaseOrder, ReplanImpact, Run, Scorecard, WorkflowEvent } from '../api/types'
+import type { NegotiationOffer, NegotiationStatus, NegotiationThread, NegotiationTurn, PurchaseOrder, ReplanImpact, Run, Scorecard, ScoringWeights, WorkflowEvent } from '../api/types'
 import { money, time } from '../format'
 import { Button, ErrorLine, Panel } from './Panel'
 
@@ -44,6 +44,7 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
 
   return (
     <Panel title="Decision">
+      {run.replan_impact && <ReplanBanner impact={run.replan_impact} names={names} />}
       {generated && run.purchase_order && <PurchaseOrderCard po={run.purchase_order} runId={run.run_id} />}
       {run.replan_impact && <ReplanImpactCard impact={run.replan_impact} names={names} explanation={rec?.change_explanation ?? null} />}
 
@@ -60,12 +61,12 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
                   <span className="mono text-zinc-500">#{i + 1}</span>
                   <span className={`truncate ${top ? 'font-semibold text-emerald-300' : ''}`}>{names[c.supplier_id] ?? c.supplier_id}</span>
                   <span className="mono text-xs text-zinc-500">{c.supplier_id}</span>
-                  <span className="mono ml-auto text-lg">{c.total_score.toFixed(1)}</span>
+                  {top && <span className="rounded bg-emerald-800/70 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-100">recommended</span>}
+                  <span className="mono ml-auto text-lg" title="total score (0–100)">
+                    {c.total_score.toFixed(1)}
+                  </span>
                 </div>
-                <div className="mt-1.5 h-2 rounded bg-zinc-800">
-                  <div className={`h-2 rounded ${c.eligible ? 'bg-emerald-500' : 'bg-zinc-600'}`} style={{ width: `${Math.max(0, Math.min(100, c.total_score))}%` }} />
-                </div>
-                <div className="mono mt-1.5 flex gap-4 text-xs text-zinc-400">
+                <div className="mono mt-1 flex gap-4 text-xs text-zinc-400">
                   <span>
                     landed <span className="text-zinc-200">{money(c.landed_cost)}</span>
                   </span>
@@ -80,11 +81,7 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
                   </div>
                 )}
                 {c.eligible ? (
-                  <div className="mono mt-1 text-[10px] text-zinc-500">
-                    {Object.entries(c.score_breakdown)
-                      .map(([k, v]) => `${k} ${v.toFixed(1)}`)
-                      .join(' · ')}
-                  </div>
+                  <ScoreBars breakdown={c.score_breakdown} weights={run.config.weights} />
                 ) : (
                   <div className="mt-1 text-xs text-red-300">{c.ineligibility_reasons.join('; ')}</div>
                 )}
@@ -99,7 +96,13 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
           <div>
             <h3 className="text-xs uppercase tracking-wider text-zinc-500">Recommendation</h3>
             <p className="mt-1 text-emerald-200">
-              {rec.recommended_supplier_id ? `${names[rec.recommended_supplier_id] ?? rec.recommended_supplier_id} (${rec.recommended_supplier_id})` : 'No eligible supplier'}
+              {rec.recommended_supplier_id ? (
+                <>
+                  {names[rec.recommended_supplier_id] ?? rec.recommended_supplier_id} <span className="mono text-xs text-zinc-500">{rec.recommended_supplier_id}</span>
+                </>
+              ) : (
+                'No eligible supplier'
+              )}
             </p>
           </div>
           <div>
@@ -124,7 +127,7 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
                     const cheaper = b && b.landed_cost !== c.landed_cost
                     return (
                       <tr key={c.supplier_id} className="border-t border-zinc-800/60">
-                        <td className="py-0.5 text-zinc-300">{c.supplier_id}</td>
+                        <td className="py-0.5 text-zinc-300">{names[c.supplier_id] ?? c.supplier_id}</td>
                         <td className="py-0.5 text-right">
                           {b && <span className="text-zinc-500">{money(b.landed_cost)} → </span>}
                           <span className={cheaper ? 'text-emerald-300' : 'text-zinc-200'}>{money(c.landed_cost)}</span>
@@ -270,11 +273,66 @@ function changeValue(field: string, v: unknown): string {
   return String(v)
 }
 
+function supplierLabel(names: Record<string, string>, sid: string | null): string {
+  return sid ? (names[sid] ?? sid) : 'none eligible'
+}
+
+/** The one line a viewer must see first after an interrupt: did the recommendation move? Sits at the very top of
+ *  the panel, above the PO card and the impact table. */
+function ReplanBanner({ impact, names }: { impact: ReplanImpact; names: Record<string, string> }) {
+  const flipped = impact.recommended_before !== impact.recommended_after
+  return (
+    <div
+      className={`mb-3 rounded-md px-3 py-2 text-sm font-semibold ${flipped ? 'bg-red-900/50 text-red-100 ring-1 ring-red-500' : 'bg-zinc-800/80 text-zinc-200 ring-1 ring-zinc-600'}`}
+      title={`request v${impact.from_version} → v${impact.to_version}`}
+    >
+      <div className="text-[10px] font-normal uppercase tracking-wider opacity-80">After the requirement change · v{impact.from_version} → v{impact.to_version}</div>
+      {flipped ? (
+        <>
+          Recommendation changed: {supplierLabel(names, impact.recommended_before)} → {supplierLabel(names, impact.recommended_after)}
+        </>
+      ) : (
+        <>Recommendation unchanged: {supplierLabel(names, impact.recommended_after)}</>
+      )}
+    </div>
+  )
+}
+
+const DIMENSION: { key: keyof ScoringWeights; label: string }[] = [
+  { key: 'price', label: 'Price' },
+  { key: 'lead_time', label: 'Lead time' },
+  { key: 'reliability', label: 'Reliability' },
+  { key: 'risk', label: 'Risk' },
+]
+
+/** score_breakdown holds weight × dimension score (0–100) and sums to the total; each bar shows the dimension
+ *  score as a share of what that dimension could contribute at most, with the contribution as the number. */
+function ScoreBars({ breakdown, weights }: { breakdown: Record<string, number>; weights: ScoringWeights }) {
+  return (
+    <div className="mt-1.5 grid grid-cols-4 gap-2">
+      {DIMENSION.map(({ key, label }) => {
+        const max = weights[key] * 100
+        const value = breakdown[key] ?? 0
+        const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
+        return (
+          <div key={key} title={`${label}: ${value.toFixed(1)} of ${max.toFixed(0)} (weight ${weights[key]})`}>
+            <div className="flex items-baseline justify-between text-[10px]">
+              <span className="text-zinc-500">{label}</span>
+              <span className="mono text-zinc-300">{value.toFixed(1)}</span>
+            </div>
+            <div className="mt-0.5 h-1.5 rounded bg-zinc-800">
+              <div className="h-1.5 rounded bg-emerald-500/80" style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Structured outcome of an interrupt (D22): what the human changed, what it did to every supplier, and why the
  *  recommendation moved. Numbers are the engine's; the explanation is the Decision Agent's summary of the diff. */
 function ReplanImpactCard({ impact, names, explanation }: { impact: ReplanImpact; names: Record<string, string>; explanation: string | null }) {
-  const flipped = impact.recommended_before !== impact.recommended_after
-  const label = (sid: string | null) => (sid ? (names[sid] ?? sid) : 'none eligible')
   return (
     <div className="mb-4 rounded border border-red-800/70 bg-red-950/20 p-3 text-sm">
       <div className="flex items-baseline justify-between">
@@ -292,15 +350,6 @@ function ReplanImpactCard({ impact, names, explanation }: { impact: ReplanImpact
           </li>
         ))}
       </ul>
-      <div className={`mt-2 rounded px-2 py-1.5 text-sm font-semibold ${flipped ? 'bg-red-900/50 text-red-100 ring-1 ring-red-500' : 'bg-zinc-800/80 text-zinc-200'}`}>
-        {flipped ? (
-          <>
-            Recommendation changed: {label(impact.recommended_before)} → {label(impact.recommended_after)}
-          </>
-        ) : (
-          <>Recommendation unchanged: {label(impact.recommended_after)}</>
-        )}
-      </div>
       {/* before → after per supplier; "before" values sit on their own line so the table fits the 420px column */}
       <table className="mono mt-2 w-full table-fixed text-xs">
         <colgroup>
@@ -352,7 +401,7 @@ function ReplanImpactCard({ impact, names, explanation }: { impact: ReplanImpact
             .filter((s) => s.reasons.length > 0)
             .map((s) => (
               <li key={s.supplier_id} className={s.eligible_before && !s.eligible_after ? 'text-red-300' : 'text-zinc-400'}>
-                <span className="mono">{s.supplier_id}</span>: {s.reasons.join('; ')}
+                {names[s.supplier_id] ?? s.supplier_id}: {s.reasons.join('; ')}
               </li>
             ))}
         </ul>

@@ -76,6 +76,39 @@ def test_full_mismatch_flow_over_http(client):
     assert client.get("/health").json()["runs"] == 1
 
 
+def test_run_summary_over_http(client):
+    """GET /runs/{id}/summary (T16): the header strip's figures, straight from the Run, at every stage."""
+    run_id = create(client)
+    s = client.get(f"/runs/{run_id}/summary").json()
+    assert s == {"run_id": run_id, "state": "CREATED", "product": "Product X", "quantity": 2000, "version": 1,
+                 "recommended_supplier_id": None, "recommended_name": None, "total_score": None, "landed_cost": None,
+                 "pending_human_kind": None, "po_number": None,
+                 "counts": {"documents": 0, "quotes": 0, "events": 1, "negotiations": 0}}
+
+    upload(client, run_id, DOCS)
+    client.post(f"/runs/{run_id}/evaluate")
+    s = client.get(f"/runs/{run_id}/summary").json()
+    assert s["state"] == "CALC_MISMATCH" and s["pending_human_kind"] == "calc_mismatch"
+    assert s["counts"]["documents"] == 3 and s["counts"]["quotes"] == 3
+    assert s["counts"]["events"] == len(client.get(f"/runs/{run_id}/events").json())
+
+    client.post(f"/runs/{run_id}/quotes/APX-Q-26091/confirm-math", json={"use_computed": True})
+    run = client.get(f"/runs/{run_id}").json()
+    s = client.get(f"/runs/{run_id}/summary").json()
+    top = next(c for c in run["scorecards"] if c["supplier_id"] == "sup_b")
+    assert s["state"] == "RECOMMENDED" and s["pending_human_kind"] is None
+    assert s["recommended_supplier_id"] == "sup_b" and s["recommended_name"] == "Borealis Manufacturing AS"
+    assert s["total_score"] == top["total_score"] and s["landed_cost"] == top["landed_cost"]
+
+    client.post(f"/runs/{run_id}/request-po")
+    assert client.get(f"/runs/{run_id}/summary").json()["pending_human_kind"] == "po_approval"
+    run = client.post(f"/runs/{run_id}/approve-po", json={"approved_by": "judge"}).json()
+    s = client.get(f"/runs/{run_id}/summary").json()
+    assert s["state"] == "PO_GENERATED" and s["po_number"] == run["purchase_order"]["po_number"]
+    assert s["pending_human_kind"] is None
+    assert client.get("/runs/nope/summary").status_code == 404
+
+
 def test_email_json_upload_and_correct(client):
     run_id = create(client)
     text = (SYNTHETIC / "supplier_c_cobalt.eml.txt").read_text()
