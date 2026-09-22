@@ -1,7 +1,7 @@
 # PLAN.md — ProcureAI: The Autonomous Procurement War Room
 
 Source of truth for the 3-week AWS AI Agents hackathon. Coding agents: read this file first.
-Last updated: 2026-09-19 (end of Week 1; starter kit: github.com/kenken64/ShowMeYourAgent-Starter-Kit). Owner: main planning agent.
+Last updated: 2026-09-22 (Week 2 day 1; starter kit: github.com/kenken64/ShowMeYourAgent-Starter-Kit). Owner: main planning agent.
 
 ---
 
@@ -52,7 +52,7 @@ Layer contract (non-negotiable):
 
 LLM access path (from the sponsor starter kit, see docs/INFRA.md once T4 is done):
 `backend → LLMClient → (a) organiser AWS LLM Gateway (Ollama-compatible `POST /api/chat`, API key) or (b) OpenClaw gateway on Lightsail (localhost:18789) which itself calls the same LLM gateway`.
-Gateway facts (verified T4, 2026-09-19, details in docs/INFRA.md): auth `Authorization: Bearer <key>`; models `sonnet4.5:latest`, `sonnet:latest`, `haiku:latest`; text at `message.content`; ~2.4–3.2 s per call regardless of size; output silently truncated at 256 tokens when `num_predict` is omitted and still reports done_reason "stop", so always send num_predict; Sonnet wraps JSON in ```json fences despite instructions, so always use the tolerant extractor; body limit unverified, enforced client-side at `LLM_MAX_BODY_BYTES=7000`; native `tools` ignored; 403 on rapid calls; 429 on quota. Therefore every LLM call is a small, stateless, single-shot JSON task with a compact prompt; the backend owns all state and does its own "tool loop". No conversation history is sent to the LLM.
+Gateway facts (verified T4 2026-09-19, corrected T10a 2026-09-22; details in docs/INFRA.md and docs/OPENCLAW.md): auth `Authorization: Bearer <key>`; models `sonnet4.5:latest`, `sonnet:latest`, `haiku:latest`; text at `message.content`; ~2.4–3.2 s per call regardless of size; output silently truncated at 256 tokens when `num_predict` is omitted and still reports done_reason "stop", so always send num_predict; Sonnet wraps JSON in ```json fences despite instructions, so always use the tolerant extractor; body limit is > 60 KB (OpenClaw sends 52–60 KB turns successfully), so raise `LLM_MAX_BODY_BYTES` to 32000 (T10b); native tool calls DO work now (done_reason "tool_calls"), although our design still does its own tool loop; 403 on rapid calls; 429 on quota. Therefore every LLM call is a small, stateless, single-shot JSON task with a compact prompt; the backend owns all state and does its own "tool loop". No conversation history is sent to the LLM.
 
 Key de-risking decision: every agent has a `MockAgent` implementation returning canned-but-realistic output from fixtures. The full pipeline must run end-to-end with mocks (no AWS) from Week 1, so UI/workflow work never blocks on Bedrock/OpenClaw access.
 
@@ -149,15 +149,20 @@ All models are pydantic v2; JSON schemas exported to `backend/domain/schema/*.js
 
 **Week 1 (Sep 15–19) — straight-line pipeline.** DONE (mock Sep 13, live Sep 19). Upload → Claude extraction → deterministic validation with the math-mismatch gate → supplier history → scoring → recommendation, over HTTP with SSE, browser UI with both human gates.
 **Week 2 (Sep 22–26) — loops.** Negotiation loop DONE Sep 19 (T11, T12) and the interrupt/replan DONE Sep 19 (T13), both in mock mode. Remaining Week 2 work: live Decision Agent text (T7), PO gate (T15), Jev guardrail judge (T14).
-**Week 3 (Sep 29–Oct 3) — War Room polish, OpenClaw/Lightsail, demo.** OpenClaw spike + deployment (T10), War Room visual polish and agent lanes (T16), fallback dashboard (T17), failure drills. Last 2 days (Oct 2–3): demo script, dry runs, recovery, slides. Nothing new after Oct 1.
+**Week 3 (Sep 29–Oct 3) — polish and demo.** OpenClaw + deployment DONE Sep 22 (T10a–c), one week early. Remaining: persistence (T19), War Room polish (T16), fallback dashboard (T17), demo hardening (T18), then stretch items. Feature freeze Oct 1; Oct 2–3 dry runs and slides only.
 
 ---
 
 ## 8. Current implementation status (2026-09-19)
 
-Everything in the target demo (§15) works end to end in `MODE=mock` from the browser: request → 3 documents → mismatch gate → recommendation → 4 negotiation approvals with policy-checked edits → interrupt 2,000 → 5,000 → recommendation flips Borealis → Cobalt with an impact card → PO gate → downloadable PDF. Live mode is proven for extraction only. 137 backend tests, frontend builds clean. Live mode proven for extraction, decision text, and the Jev judge. Not started: Jev judge, OpenClaw, Lightsail deployment.
+Everything in the target demo (§15) works end to end in `MODE=mock` from the browser: request → 3 documents → mismatch gate → recommendation → 4 negotiation approvals with policy-checked edits → interrupt 2,000 → 5,000 → recommendation flips Borealis → Cobalt with an impact card → PO gate → downloadable PDF. Live mode is proven for extraction only. 137 backend tests, frontend builds clean. Deployed live at http://47.129.120.76/ through OpenClaw with the Jev judge; verified end to end in the browser. Not started: Jev judge, OpenClaw, Lightsail deployment.
 
 ## 9. Completed tasks
+- T16 (2026-09-22): agent lanes (derived from the event stream), moment cards for the 10 guardrail/decision moments, timeline filters + paused auto-scroll, summary strip with the WAITING FOR HUMAN pill, score bars, replan banner, one-line quote cards, empty/error states, copy pass; backend agent.failed on LLM fallbacks (guard_trip|parse_error|llm_unavailable) and GET /runs/{id}/summary; docs/screenshots/01–05 for the slides. 239 tests.
+- T19 (2026-09-22): FileRunRepository (run.json atomic replace + events.jsonl append, fsync) behind RunStore, RUN_STORE_DIR (set on the box), restore on startup with transient-state recovery (run.recovered event), seq continuity, corrupt-dir skip; deploy.sh protects data/runs; `just clear-runs`. ~7 ms per event on the box. Verified: a run survives a backend restart on Lightsail. 232 tests.
+- T10c (2026-09-22): RULES_REMINDER at the end of both decision user messages → all rationales pass the guard via OpenClaw (5 re-records); OPENCLAW_TASKS per-task routing as emergency pin; deployed at http://47.129.120.76/ (nginx → SPA + /api proxy with SSE-safe settings; user unit procureai-backend.service; 8000/18789 closed); docs/DEPLOY.md, scripts/deploy.sh, `just deploy`. Box after a full run: 2.7 GB available, backend 95 MB, OpenClaw 568 MB. 213 tests.
+- T10b (2026-09-22): dedicated `procureai` OpenClaw agent (minimal profile, extended deny list, no bootstrap, 3.6k-token prompt vs 15.8k default; stateless and refuses tool use verified); llm/openclaw.py + llm/fallback.py + llm/common.py; LLM_BACKEND=openclaw routes every agent call through OpenClaw with automatic gateway fallback; LLMResult.backend surfaced on agent.finished ("via OpenClaw" chip); /health openclaw probe; skills procureai-runs / run-status / approve-negotiation on the box and in openclaw/skills/. OpenClaw adds ~0.5–1.5 s per call. 211 tests.
+- T10a (2026-09-22): OpenClaw 2026.9.5 running on Lightsail (47.129.120.76, ap-southeast-1, systemd USER unit openclaw-gateway.service, 18789 loopback-only, ~740 MB RSS) through our LLM gateway. Findings in docs/OPENCLAW.md: OpenAI-compatible `POST /v1/chat/completions` on 18789 (enable `gateway.http.endpoints.chatCompletions.enabled`, Bearer OPENCLAW_TOKEN) is stateless per request, honours system messages, adds 0.3–1 s over the direct gateway; skills can call the backend (procureai-health demo). Starter-kit deviations documented (non-interactive onboard, ~/.config perms, user unit + linger, num_predict via models[0].params). Recommendation (C) adopted.
 - T14 (2026-09-19): guardrails/ GuardrailJudge (mock + Jev via typesafe-sdk 0.7.0, model jev-1.13.0, replay cache data/judge_cache/, JUDGE_MAX_LIVE_CALLS): per-field extraction verification lowers confidence for unsupported values (tampered 99.20 → p=0.01), outbound leak check adds judge violations to the policy path (clean draft 0.16–0.24, leaking 0.96), injection detection events on documents and supplier replies (Cobalt 0.94, clean 0.03–0.06). Judge failure → "not evaluated", workflow unaffected. Shield markers in the timeline, judge mode in /health. 18 live calls, 10k input tokens. 189 tests.
 - T7 (2026-09-19): LiveDecisionAgent: rationale (Sonnet, ≤120 words) + change explanation (≤100 words) from scorecards/diff only; deterministic number guard (every number in the prose must exist in the input; caught Sonnet computing cost differences in 2 of 3 first-draft responses); templated fallback on guard trip or gateway failure; 5 cache entries committed; PO number now uses the 8 hex chars. 174 tests.
 - T15 (2026-09-19): PO gate: request_po (preview from engine totals at the effective offer) → AWAITING_PO_APPROVAL with pending_human po_approval → approve_po (re-derives totals, totals_changed guard) → PO_GENERATED (terminal) / reject_po; interrupt allowed from AWAITING_PO_APPROVAL (po.discarded); po/render.py one-page PDF; routes request-po, approve-po, reject-po, GET /po, GET /po.pdf; PoGate labelled "Approve Final Supplier & Generate PO"; PO card + PDF link. PurchaseOrder constructed only in the orchestrator. 153 tests.
@@ -185,16 +190,16 @@ Everything in the target demo (§15) works end to end in `MODE=mock` from the br
 6. **T17 Fallback dashboard**: when /health reports the gateway down in live mode, the UI offers the manual comparison view using validated numbers only (G6).
 7. **T18 Demo hardening**: scripted dry-run checklist, seed script that reproduces the exact demo run in < 10 s, failure drills (gateway 429, bad upload), slides.
 
-Chores (fold into the next task touching the area): generate_synthetic_quotes.py overwrites the hand-edited data/synthetic/README.md and rewrites PDF/xlsx timestamps on `just regen` (pin metadata, match README). MockDocumentAgent `lowconf` glob is brittle when two supplier_c_* fixtures exist. Unreadable-document placeholder uses currency "XXX", quantity 1, confidence 0 (acceptable). Vite may land on 5174+ if 5173 is busy; `just run` uses strict port.
+Chores (fold into the next task touching the area): OpenClaw auto-created a weekly cron `skill-collection-review-procureai` on the box that fires an agent turn (spends credits); disable it: `openclaw cron disable <id>` (id starts f616455f). backend/out/ PDFs are gitignored. generate_synthetic_quotes.py overwrites the hand-edited data/synthetic/README.md and rewrites PDF/xlsx timestamps on `just regen` (pin metadata, match README). MockDocumentAgent `lowconf` glob is brittle when two supplier_c_* fixtures exist. Unreadable-document placeholder uses currency "XXX", quantity 1, confidence 0 (acceptable). Vite may land on 5174+ if 5173 is busy; `just run` uses strict port.
 
 Supplier id convention: `sup_a`, `sup_b`, `sup_c`. Team: one developer so far; lanes for late joiners: A backend/engine, B agents/LLM, C infra/OpenClaw, D frontend.
 
 ---
 
 ## 12. Known technical risks
-1. OpenClaw programmatic API undocumented in the starter kit. Mitigation: backend calls the LLM gateway directly (Week 1 path); OpenClaw added in T10 as orchestration/visibility layer; if unstable, demo runs on the direct path and OpenClaw is shown as the deployed agent host.
+1. OpenClaw path adds a hop and a 740 MB process on a 4 GB box. Mitigation: `LLM_BACKEND` switch with automatic fallback to the direct gateway; caches make the demo independent of both.
 2. Gateway 8 KiB body limit. Mitigation: PDFs/xlsx parsed to text locally, trimmed to the quote table region; synthetic docs kept short; prompts compact; never send base64 or history.
-2b. USD 100 token credits shared. Mitigation: `MODE=mock` default; record/replay cache for live calls (`data/llm_cache/`, committed on purpose, keyed by prompt hash); `num_predict` set per task; tests run replay_only.
+2b. Live call cost measured at roughly 1–2 cents per Sonnet call (~4k tokens); the USD 100 credit is not a practical constraint. Dry runs may run live freely. Mitigation kept: `MODE=mock` default; record/replay cache for live calls (`data/llm_cache/`, committed on purpose, keyed by prompt hash); `num_predict` set per task; tests run replay_only.
 3. LLM JSON drift. Mitigation: pydantic parse + one retry + escalate to human form.
 4. Interrupt semantics get complex. Mitigation: versioned request; replan = re-run validate/score with new version, diff old vs new scorecards, LLM explains diff only.
 5. Demo fragility. Mitigation: `MODE=mock` runs full demo offline; scripted supplier personas are deterministic.
@@ -207,7 +212,7 @@ Supplier id convention: `sup_a`, `sup_b`, `sup_c`. Team: one developer so far; l
 - D4 LLM reached via the organiser gateway, never Bedrock directly. Config: `LLM_GATEWAY_URL`, `LLM_GATEWAY_API_KEY`, `LLM_MODEL` (default `sonnet4.5:latest`, which the gateway maps to `global.anthropic.claude-sonnet-4-5-20250929-v1:0`). One place in code. Claude 3.5 Sonnet from the original doc is obsolete.
 - D5 Storage Week 1: in-memory + JSON files. DynamoDB only if time allows; repository interface hides it.
 - D6 War Room realtime: SSE (simpler than WebSockets), polling fallback.
-- D11 Backend does its own tool loop; LLM calls are single-shot JSON tasks (extract / explain / draft / explain-diff). OpenClaw's role: hosted agent runtime on Lightsail that exposes the same four agent tasks and calls backend tools; decided finally in T10.
+- D11 RESOLVED (T10a): option C. (A) Every agent LLM call goes through OpenClaw's `/v1/chat/completions` on the Lightsail box via `OpenClawLLMClient` (same single-shot JSON tasks, same cache), direct gateway as automatic fallback. (B) OpenClaw skills call the backend so a user can query and approve from OpenClaw chat. SECURITY: option A uses a dedicated `agents.entries.procureai` with tools denied (exec, write, edit, apply_patch, process, web_fetch, browser) and no bootstrap files, because untrusted supplier text passes through it and the default main agent has shell access.
 - D13 Scoring weights 0.30/0.20/0.30/0.20 (see §15). Engine decisions from T3: missing supplier profile → ineligible (never fabricate); quote `capacity_units` decides eligibility, profile `max_capacity_units` feeds risk only; lead-time window = required_by − created_at; quotes are costed at the request quantity, with an informational issue if it differs from quantity_quoted.
 - D14 Contract additions allowed in T6: `QuoteChecks.capacity_ok`, `ValidatedQuote.pre_tax_total`. Regenerate schemas and fixtures when adding.
 - D16 Upload route is `/documents` (documents in, quotes out). Documents can be added only in CREATED or EXTRACTED; in NEEDS_HUMAN_EXTRACTION use replace/correct. Doc→quote mapping is derived from `quote.extracted` events; add `doc_id` to NormalizedQuote only if a later task needs it.
@@ -224,6 +229,8 @@ Supplier id convention: `sup_a`, `sup_b`, `sup_c`. Team: one developer so far; l
 - D26 Decision-agent input (T7): profiles, weights and before-scorecards are passed to explain(); required_by is sent as delivery_window_days so cache keys are date-stable; money pre-formatted and scores pre-rounded so the model has nothing to compute. Fallbacks are logged, not yet surfaced as agent.failed events (small orchestrator change, fold into T16).
 - D27 Coding agents never commit; the developer commits after review. Every prompt says so.
 - D28 Judge as built (T14): judge only lowers confidence (never raises) and only for fields currently above the gate; cache miss in replay_only yields "not evaluated"; thresholds 0.6 / 0.7 / 0.7 untouched. All three roles kept after live validation.
+- D29 OpenClaw route and the number guard (T10b finding): OpenClaw wraps our system message inside its own ~3k-token assistant prompt, which diluted the "only input numbers" rule; all three rationales tripped the G1 guard and fell back to templated text (extractions and change explanations were fine). Fix (T10c step 0): repeat the numbers rule at the END of the user message for both decision prompts (harmless on the direct route), re-record, and add per-task routing `OPENCLAW_TASKS` (default all) so any task that still fails can be pinned to the direct gateway. The guard itself stays; it did its job.
+- D30 Demo LLM mode: the final demo runs live through OpenClaw for the 8 LLM calls (~45 s total, acceptable with the timeline visible), with the replay cache as the automatic safety net if the gateway or box misbehaves. Decided in T18 after a dry run.
 - D12 Deployment target: AWS Lightsail Ubuntu 24.04, ap-southeast-1, 4 GB plan, same box as OpenClaw. Develop locally; deploy in Week 3. Live LLM calls kept minimal to preserve the USD 100 credit.
 - D7 Negotiation scope: price and lead time only; max 2 turns per supplier enforced by the state machine, not the prompt.
 - D8 Supplier documents are untrusted: extraction prompt wraps content in data delimiters; injection test fixture required in T2.
@@ -231,9 +238,9 @@ Supplier id convention: `sup_a`, `sup_b`, `sup_c`. Team: one developer so far; l
 - D10 Metrics as redefined: processing time < 30 s; 100% of low-confidence critical fields blocked; negotiation policy compliance 100%; consequential actions 100% human-approved; replan produces a valid new recommendation without restart.
 
 ## 14. Open questions
-- OQ1 What is the minimum OpenClaw integration that satisfies "uses OpenClaw" for judges, and can the backend drive it programmatically (WS API on :18789, `openclaw agent` CLI over SSH, or a webhook/channel)? Answered by T10.
+- OQ1 RESOLVED (T10a): see D11.
 - OQ2 RESOLVED (T4): `Authorization: Bearer`.
-- OQ3 Is Lightsail deployment mandatory for submission, and is a public URL required? Assumed yes; deploy Week 3.
+- OQ3 RESOLVED: deployed at http://47.129.120.76/ (T10c). No domain/TLS; add only if organisers require https.
 - OQ4 RESOLVED: gateway credentials in backend/.env since 2026-09-19.
 
 ## 15. Demo requirements
