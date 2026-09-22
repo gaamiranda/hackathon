@@ -1,6 +1,13 @@
-"""Deterministic quote costing (PLAN.md §4 formula chain, D2, G1).
+"""Deterministic quote costing: the PLAN.md §4 formula chain (D2, G1).
 
-All arithmetic is Decimal, rounded ROUND_HALF_UP to 2 dp after every step.
+G1 — deterministic math: every figure the buyer ever sees is computed here, in Decimal,
+from the extracted fields. The LLM's own `llm_stated_total` is *only ever compared* against
+`cost_chain()`; a mismatch stops the workflow for a human (CALC_MISMATCH) instead of being
+quietly corrected. No number in this module comes from a model.
+
+All arithmetic is Decimal, quantised to 2 dp ROUND_HALF_UP after every step (`q2`), so the
+chain is reproducible to the cent and the same on every machine.
+
 The buyer's cost uses request.quantity; the math check uses quote.quantity_quoted
 because the supplier's printed total refers to the quantity they quoted.
 
@@ -11,6 +18,7 @@ the original price because the printed total predates the negotiation.
 
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import NamedTuple
 
 from procureai.domain.models import (
     NormalizedQuote,
@@ -21,11 +29,12 @@ from procureai.domain.models import (
 )
 
 CENT = Decimal("0.01")
+PERCENT = Decimal(100)  # discount_pct and tax_rate_pct are percentages, not fractions
 MATH_TOLERANCE = Decimal("0.01")
 
 
 def q2(value: Decimal) -> Decimal:
-    """Round to 2 dp, ROUND_HALF_UP."""
+    """Quantise to 2 dp, ROUND_HALF_UP. Applied after every step of the chain."""
     return value.quantize(CENT, rounding=ROUND_HALF_UP)
 
 
@@ -39,20 +48,43 @@ def effective_lead_time_days(quote: NormalizedQuote) -> int:
     return quote.negotiated_offer.lead_time_days if quote.negotiated_offer else quote.lead_time_days
 
 
+class CostChain(NamedTuple):
+    """The five figures of the §4 chain, in the order they are computed."""
+
+    subtotal: Decimal
+    discount: Decimal
+    pre_tax_total: Decimal
+    tax: Decimal
+    landed_cost: Decimal
+
+
+def cost_chain(
+    quote: NormalizedQuote, quantity: int, tax_rate_pct: Decimal, unit_price: Decimal | None = None
+) -> CostChain:
+    """Cost `quantity` units of `quote`. The whole PLAN.md §4 chain, top to bottom (G1).
+
+    `unit_price` overrides the effective price (used by the math check, which must re-derive
+    the supplier's printed total from the *quoted* price). `tax_rate_pct` is buyer-side, from
+    ProcurementConfig: supplier documents never include tax.
+    """
+    price = effective_unit_price(quote) if unit_price is None else unit_price
+
+    # PLAN.md §4, one line per formula. q2() = quantise to the cent, ROUND_HALF_UP.
+    subtotal = q2(Decimal(quantity) * price)                             # subtotal      = quantity × unit_price
+    discount = q2(subtotal * quote.discount_pct / PERCENT)               # discount      = subtotal × discount_pct
+    pre_tax = q2(subtotal - discount + quote.shipping_cost)              # pre_tax_total = subtotal − discount + shipping
+    tax = q2(pre_tax * tax_rate_pct / PERCENT)                           # tax           = pre_tax_total × tax_rate_pct
+    landed = q2(pre_tax + tax)                                           # landed_cost   = pre_tax_total + tax
+
+    return CostChain(subtotal, discount, pre_tax, tax, landed)
+
+
 def pre_tax_total(
     quote: NormalizedQuote, quantity: int, unit_price: Decimal | None = None
 ) -> tuple[Decimal, Decimal, Decimal]:
-    """(subtotal, discount, pre_tax_total) for `quantity` units.
-
-    subtotal      = quantity × unit_price (effective_unit_price unless given)
-    discount      = subtotal × discount_pct / 100
-    pre_tax_total = subtotal − discount + shipping_cost
-    """
-    price = effective_unit_price(quote) if unit_price is None else unit_price
-    subtotal = q2(Decimal(quantity) * price)
-    discount = q2(subtotal * quote.discount_pct / Decimal(100))
-    pre_tax = q2(subtotal - discount + quote.shipping_cost)
-    return subtotal, discount, pre_tax
+    """(subtotal, discount, pre_tax_total): the first three links of `cost_chain` (no tax)."""
+    chain = cost_chain(quote, quantity, Decimal(0), unit_price)
+    return chain.subtotal, chain.discount, chain.pre_tax_total
 
 
 def days_available(request: ProcurementRequest) -> int:
@@ -69,22 +101,18 @@ def capacity_ok(quote: NormalizedQuote, request: ProcurementRequest) -> bool:
 def compute_costs(
     quote: NormalizedQuote, request: ProcurementRequest, config: ProcurementConfig
 ) -> ValidatedQuote:
-    """Cost the quote for the buyer's request.quantity and run every check.
+    """Run `cost_chain` at the buyer's request.quantity, then every deterministic check.
 
-    tax         = pre_tax_total × tax_rate_pct / 100
-    landed_cost = pre_tax_total + tax
-
-    Checks:
+    Checks (all engine-side; the LLM sees none of this):
       math_ok      |pre_tax_total(quantity_quoted, original unit_price) − llm_stated_total| ≤ 0.01
-                   (no stated total → True, with issue "no stated total")
+                   (no stated total → True, with issue "no stated total"). G1: a mismatch is
+                   surfaced to a human, never corrected silently.
       moq_ok       request.quantity ≥ moq
       lead_time_ok effective_lead_time_days ≤ days_available(request)
       budget_ok    landed_cost ≤ request.budget
       capacity_ok  request.quantity ≤ capacity_units (True when no capacity stated)
     """
-    subtotal, discount, pre_tax = pre_tax_total(quote, request.quantity)
-    tax = q2(pre_tax * config.tax_rate_pct / Decimal(100))
-    landed = q2(pre_tax + tax)
+    subtotal, discount, pre_tax, tax, landed = cost_chain(quote, request.quantity, config.tax_rate_pct)
 
     issues: list[str] = []
 
@@ -92,6 +120,7 @@ def compute_costs(
         math_ok = True
         issues.append("no stated total on document; math check skipped")
     else:
+        # G1: re-derive the supplier's printed total from its own quantity and price, and compare.
         _, _, quoted_pre_tax = pre_tax_total(quote, quote.quantity_quoted, unit_price=quote.unit_price)
         math_ok = abs(quoted_pre_tax - quote.llm_stated_total) <= MATH_TOLERANCE
         if not math_ok:

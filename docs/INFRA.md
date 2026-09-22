@@ -1,5 +1,7 @@
 # INFRA — organiser LLM gateway
 
+Part of [ProcureAI](../README.md); plan of record: [PLAN.md](../PLAN.md) §2, D4, D18.
+
 Findings from T4 (`backend/scripts/probe_gateway.py`, run 2026-09-19). Answers PLAN.md OQ2 and the
 gateway assumptions in §2. Everything here was measured against the live gateway, not inferred from
 the starter kit, unless marked *untested*.
@@ -21,9 +23,12 @@ Returns `{"models": [...]}` in ~20–26 ms. Three aliases, all Bedrock-backed Cl
 |---|---|
 | `sonnet4.5:latest` | `{"format": "bedrock", "family": "claude", "parameter_size": "", "quantization_level": ""}` |
 | `sonnet:latest` | same |
-| `haiku:latest` | same |
+| `haiku:latest` | same — **listed but refused** by `POST /api/chat`: 400 "Only the approved model is allowed" (D18) |
 
-`size` is `0` for all three. The gateway **also accepts the full Bedrock model id directly**:
+`size` is `0` for all three. Because Haiku is refused, `LLM_MODEL_FAST` defaults to `LLM_MODEL`;
+set it only if the organisers approve a second model.
+
+The gateway **also accepts the full Bedrock model id directly**:
 `global.anthropic.claude-sonnet-4-5-20250929-v1:0` (what `backend/.env` currently sets) returns 200 and
 echoes that id back in `model`. Both forms work; the alias is the safer default for the demo because it
 survives a model swap on the organiser side.

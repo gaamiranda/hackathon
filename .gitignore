@@ -28,6 +28,9 @@ data/runs/
 # LLM record/replay cache is COMMITTED on purpose: tests and demos replay it instead of
 # spending the shared token credit (PLAN.md risk 2b).
 
+# Organiser hand-outs kept locally for reference, not ours to redistribute
+/Hackathon Planning Doc*.pdf
+
 # macOS
 .DS_Store
 ._*

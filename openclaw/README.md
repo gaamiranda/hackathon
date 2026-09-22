@@ -1,5 +1,8 @@
 # openclaw/ — what lives on the Lightsail box (T10b, PLAN.md D11)
 
+Part of [ProcureAI](../README.md); plan of record [PLAN.md](../PLAN.md) D11, background in
+[docs/OPENCLAW.md](../docs/OPENCLAW.md) and [docs/DEPLOY.md](../docs/DEPLOY.md).
+
 Source of truth for the OpenClaw side of ProcureAI. Nothing here holds a secret; the gateway key and
 the OpenClaw token live only in `~/.openclaw/openclaw.json` on the box and in `backend/.env` locally.
 

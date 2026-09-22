@@ -337,7 +337,9 @@ class Orchestrator:
                                {"supplier_id": supplier_id, "round": round_no, "offer": _json(target),
                                 "violations": policy.violations, "source": "human_edit"})
                     raise WorkflowError("policy_violation", "; ".join(policy.violations))
-            if not can_open_turn(thread, thread.boundaries):  # G2, enforced here regardless of the agent
+            # G2: hard cap, state machine not prompt. config.negotiation.max_rounds → thread.boundaries
+            # → can_open_turn; a third buyer turn is unreachable whatever any agent or human asks for.
+            if not can_open_turn(thread, thread.boundaries):
                 raise WorkflowError("round_limit", f"{supplier_id}: {thread.boundaries.max_rounds} buyer turns already used")
 
             thread.turns.append(NegotiationTurn(role=NegotiationRole.BUYER, message=text, offer=target,
@@ -660,7 +662,7 @@ class Orchestrator:
         verdict = self.agents["negotiation"].evaluate_counter(thread, counter, b)
         # A live agent explains its verdict in one line; the templated agent has no reason to give (T20).
         reason = getattr(self.agents["negotiation"], "last_reason", None)
-        if verdict == "counter" and not can_open_turn(thread, b):  # G2: the agent cannot open a third turn
+        if verdict == "counter" and not can_open_turn(thread, b):  # G2: same cap, applied to the agent's verdict
             verdict, reason = "close", None
         if verdict == "accept" and counter is None:
             verdict, reason = "close", None

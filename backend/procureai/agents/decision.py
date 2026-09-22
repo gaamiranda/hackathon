@@ -3,19 +3,19 @@
 Two single-shot JSON calls at most: the rationale (task "explain", LLM_MODEL) and, only after a
 replan / re-score, the change explanation (task "explain_diff", LLM_MODEL_FAST). The model sees
 engine output only — scorecards, validated figures, supplier history, diff lines — never document
-or supplier text. Every number in the prose must already be in the input JSON (number guard);
-anything else, a parse failure or a gateway outage falls back to MockDecisionAgent's templated
-text so the demo keeps running (G6).
+or supplier text. Every number in the prose must already be in the input JSON (the number guard,
+`agents/number_guard.py`); a guard trip, a parse failure or a gateway outage falls back to
+MockDecisionAgent's templated text so the demo keeps running (G6).
 """
 
 import json
 import logging
-import re
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 from typing import Any
 
 from procureai.agents.base import Explanation
 from procureai.agents.mock import MockDecisionAgent
+from procureai.agents.number_guard import foreign_numbers, numbers_in  # noqa: F401  (re-exported: tests and agents import it from here)
 from procureai.agents.prompts.decision import (
     CHANGE_KEYS,
     CHANGE_SYSTEM,
@@ -200,44 +200,6 @@ class LiveDecisionAgent:
         if isinstance(answer.get("escalation_note"), str) and answer["escalation_note"].strip():
             parts.append(f"Escalation: {answer['escalation_note'].strip()}")
         return " ".join(parts)
-
-
-# ---------------------------------------------------------------------- number guard (G1)
-# Digits with optional thousands separators, decimals and a % sign; "-" is not captured so a range
-# like "10-8 days" or a diff arrow "v1 → v2" still yields plain numbers.
-
-NUMBER = re.compile(r"(?<![\w.])\d{1,3}(?:,\d{3})+(?:\.\d+)?%?|(?<![\w.,])\d+(?:\.\d+)?%?")
-
-
-def numbers_in(text: str) -> list[tuple[str, Decimal, bool]]:
-    """(token, value, is_percent) for every number in `text`, thousands separators removed."""
-    out = []
-    for token in NUMBER.findall(text):
-        percent = token.endswith("%")
-        try:
-            value = Decimal(token.rstrip("%").replace(",", ""))
-        except InvalidOperation:  # pragma: no cover - the regex only matches digit runs
-            continue
-        out.append((token, value.normalize(), percent))
-    return out
-
-
-def allowed_numbers(input_json: str) -> set[Decimal]:
-    """Every number the model was given: JSON numbers and digits inside JSON strings (reasons, diff lines)."""
-    return {value for _, value, _ in numbers_in(input_json)}
-
-
-def foreign_numbers(text: str, input_json: str) -> set[str]:
-    """Tokens in `text` whose value is not in the input. Equal values match regardless of "," / ".00"
-    formatting, and "97%" also matches an input 0.97 (same value as a fraction). Nothing else: a
-    rounded, converted or computed number is exactly what this guard exists to catch (G1)."""
-    allowed = allowed_numbers(input_json)
-    bad: set[str] = set()
-    for token, value, percent in numbers_in(text):
-        candidates = {value, (value / 100).normalize()} if percent else {value}
-        if candidates.isdisjoint(allowed):
-            bad.add(token)
-    return bad
 
 
 # ---------------------------------------------------------------------- formatting helpers

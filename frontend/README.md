@@ -1,23 +1,38 @@
-# ProcureAI frontend — War Room (Week 3)
+# ProcureAI frontend — the War Room
 
 Vite + React 18 + TypeScript + Tailwind v4. Hooks only, no state library. Two routes:
 `/` (run list + new run) and `/runs/:id` (request & documents · live agent timeline · decision).
 
+Start with the [root README](../README.md); [PLAN.md](../PLAN.md) is the plan of record and
+[docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) explains the event stream this UI is built on.
+
 ## Install & run
+
+```sh
+just setup      # from the repo root: uv sync + npm install
+just run        # backend :8000 + War Room :5173, Ctrl-C stops both
+just test       # backend tests + `npm run build`
+```
+
+Frontend only:
 
 ```sh
 cd frontend
 npm install
 cp .env.example .env        # optional; defaults to http://localhost:8000
-npm run dev                 # http://localhost:5173 (Vite picks the next free port if 5173 is busy —
-                            #   the backend's CORS_ORIGINS must then include that port)
+npm run dev -- --strictPort # http://localhost:5173 (strictPort: the backend's CORS_ORIGINS only
+                            #   allows 5173, so failing is better than drifting to 5174)
 npm run build               # tsc + vite build → dist/
 ```
 
 Env: `VITE_API_URL` — backend base URL (default `http://localhost:8000`).
-Backend: `cd backend && uv run uvicorn procureai.api.app:app --reload` (mock mode needs no credentials).
+Backend alone: `just backend` (mock mode needs no credentials).
 
-## 60-second demo click path
+## The demo click path (docs/DEMO.md segment B)
+
+Steps 1–14 are the narrated run: extraction → mismatch gate → recommendation → negotiation →
+interrupt → purchase order. The "Manual mode" section at the end is
+[segment C](../docs/DEMO.md#structure), the break-it-on-purpose part.
 
 1. Open `/`. The form is prefilled: **Product X · 2000 units · required in 14 days · budget 30000 USD**. Click **Create run**.
 2. On the run page, drop (or click and pick) the three files from `data/synthetic/`:
@@ -89,10 +104,11 @@ appear in red under the textarea, the dialog stays open, nothing was sent (the t
 `negotiation.policy_blocked`, source human_edit). **Reset to draft** restores the agent's text.
 
 Kill the backend while the page is open: the stream indicator turns red ("disconnected – retrying") and the page
-keeps working; the client reconnects with `since=<last seq>` every 2 s. (The Week 1 store is in-memory, so after
-a restart the run is gone and the indicator says so.)
+keeps working; the client reconnects with `since=<last seq>` every 2 s. Whether the run survives the restart
+depends on `RUN_STORE_DIR`: empty (the local default) means in-memory and the run is gone; set — as it is on the
+box — the run and its whole timeline come back (T19, docs/DEPLOY.md).
 
-## Manual mode — the AI dies on stage (T17, PLAN.md G6)
+## Manual mode — the AI dies on stage (docs/DEMO.md segment C, T17, PLAN.md G6)
 
 The War Room degrades visibly instead of breaking. `/health` reports `llm: ok | degraded | down` (polled every 15 s
 on both pages) and the banner under the header follows it: amber **AI route degraded: using fallback gateway** when

@@ -21,7 +21,7 @@ from decimal import Decimal
 from typing import Any
 
 from procureai.agents.base import CounterVerdict, NegotiationDraft
-from procureai.agents.decision import foreign_numbers
+from procureai.agents.number_guard import foreign_numbers
 from procureai.agents.mock import MockNegotiationAgent
 from procureai.agents.prompts.negotiation import (
     DRAFT_KEYS,

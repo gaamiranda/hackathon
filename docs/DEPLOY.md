@@ -42,8 +42,8 @@ sudo systemctl reload nginx
 curl -s http://127.0.0.1:8000/health            # on the box
 curl -s http://47.129.120.76/api/health         # from anywhere
 # → {"mode":"live","llm_gateway":"configured","llm_backend":"openclaw","openclaw":"reachable",
-#    "openclaw_tasks":["draft","explain","explain_diff","extract"],"guardrail_judge":"jev","judge_model":"jev-1.13.0",
-#    "runs":N,"runs_persisted":true}
+#    "openclaw_tasks":["draft","explain","explain_diff","extract","negotiation_verdict"],
+#    "guardrail_judge":"jev","judge_model":"jev-1.13.0","runs":N,"runs_persisted":true}
 ```
 
 ## Redeploy: `just deploy`

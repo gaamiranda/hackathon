@@ -112,10 +112,22 @@ def check_negotiation_bounds(
     return PolicyResult(ok=not violations, violations=violations)
 
 
+# ---------------------------------------------------------------------- round cap (G2)
+# One path, no prompt involved:
+#   ProcurementConfig.negotiation.max_rounds  (domain/models.py, default 2, ge=1 le=2)
+#     → NegotiationThread.boundaries          (copied when the thread is opened)
+#       → can_open_turn()                     (asked by the orchestrator before every buyer turn)
+
+
 def buyer_turns(thread: NegotiationThread) -> int:
+    """Buyer messages already sent on this thread. Supplier replies do not count."""
     return sum(1 for t in thread.turns if t.role == NegotiationRole.BUYER)
 
 
 def can_open_turn(thread: NegotiationThread, boundaries: NegotiationBoundaries) -> bool:
-    """True while buyer turns so far < boundaries.max_rounds (G2: max 2)."""
+    """May the buyer send another message on this thread? (G2: hard cap, max_rounds = 2.)
+
+    The only question the state machine asks about round count, and the only answer that
+    matters: the agent's own opinion is checked against it, never the other way round.
+    """
     return buyer_turns(thread) < boundaries.max_rounds
