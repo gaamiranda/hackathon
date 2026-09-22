@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     # Which tasks take the OpenClaw route when LLM_BACKEND=openclaw (comma list; D29). Anything not listed goes
     # straight to the direct gateway without counting as a fallback, so a task whose prose keeps tripping the
     # number guard through OpenClaw can be pinned to the gateway without losing the route for the rest.
-    OPENCLAW_TASKS: str = "extract,explain,explain_diff,draft"
+    OPENCLAW_TASKS: str = "extract,explain,explain_diff,draft,negotiation_verdict"
 
     # Guardrail judge (PLAN.md D20, T14): TypeSafe Jev answers typed yes/no questions with probabilities; it never
     # generates text or decides anything. The mock keeps the pipeline identical without credentials or network.

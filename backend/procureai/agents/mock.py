@@ -175,16 +175,25 @@ class MockNegotiationAgent:
         """accept if the counter improves the price by ≥ half the ask or meets the lead-time target;
         counter while another buyer turn is allowed; at the limit accept any price improvement,
         else close (supplier rejected). Offers only — reply text is never read (G4)."""
-        target, baseline = self._last_ask(thread)
-        if counter is not None and target is not None:
-            half_ask = (baseline.unit_price - target.unit_price) / 2
-            if baseline.unit_price - counter.unit_price >= half_ask or counter.lead_time_days <= target.lead_time_days:
-                return "accept"
+        _, baseline = self._last_ask(thread)
+        if self.meets_acceptance_rule(thread, counter):
+            return "accept"
         if can_open_turn(thread, boundaries):
             return "counter"
         if counter is not None and counter.unit_price < baseline.unit_price:
             return "accept"
         return "close"
+
+    @classmethod
+    def meets_acceptance_rule(cls, thread: NegotiationThread, counter: NegotiationOffer | None) -> bool:
+        """D17 acceptance rule on its own: the counter takes at least half the price we asked for, or
+        meets the lead time we asked for. The live agent uses it to bound what the LLM may decide."""
+        target, baseline = cls._last_ask(thread)
+        if counter is None or target is None:
+            return False
+        half_ask = (baseline.unit_price - target.unit_price) / 2
+        return (baseline.unit_price - counter.unit_price >= half_ask
+                or counter.lead_time_days <= target.lead_time_days)
 
     @staticmethod
     def _last_ask(thread: NegotiationThread) -> tuple[NegotiationOffer | None, NegotiationOffer]:

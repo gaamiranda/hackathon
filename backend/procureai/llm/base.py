@@ -1,13 +1,14 @@
 """LLM client protocol and errors (PLAN.md D4, D11).
 
 Every call is a single-shot, stateless JSON task: no conversation history ever leaves the backend.
-`task` is a short label (extract / explain / draft / explain_diff) used for logging and cache keys.
+`task` is a short label (extract / explain / draft / negotiation_verdict / explain_diff) used for
+logging and cache keys.
 """
 
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-TASKS = ("extract", "explain", "draft", "explain_diff", "probe")
+TASKS = ("extract", "explain", "draft", "negotiation_verdict", "explain_diff", "probe")
 
 
 class LLMError(RuntimeError):

@@ -1,6 +1,6 @@
 """Agent protocols (PLAN.md §3). Every agent has a mock and, later, an LLM-backed implementation (D3)."""
 
-from typing import Literal, Protocol, TypedDict, runtime_checkable
+from typing import Literal, NotRequired, Protocol, TypedDict, runtime_checkable
 
 from procureai.domain.models import (
     NegotiationBoundaries,
@@ -27,6 +27,9 @@ class Explanation(TypedDict):
 class NegotiationDraft(TypedDict):
     message: str
     target_offer: NegotiationOffer
+    # One line for the War Room timeline when a live agent wrote one (T20); the templated agent omits it
+    # and the orchestrator falls back to its own wording.
+    summary: NotRequired[str]
 
 
 CounterVerdict = Literal["accept", "counter", "close"]

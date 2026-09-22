@@ -17,7 +17,9 @@ import pytest
 from procureai.agents.decision import CHANGE_TASK, LiveDecisionAgent, RATIONALE_TASK
 from procureai.agents.document import LiveDocumentAgent, TASK as EXTRACT_TASK
 from procureai.agents.factory import build_agents
+from procureai.agents.negotiation import DRAFT_TASK, VERDICT_TASK, LiveNegotiationAgent
 from procureai.agents.prompts.decision import payload_of
+from procureai.agents.prompts.negotiation import payload_of as payload_of_negotiation
 from procureai.config.settings import Settings
 from procureai.domain.models import ProcurementRequest, RawDocument, WorkflowState as S
 from procureai.llm.cache import CACHE_DIR, ReplayCache, cache_key
@@ -111,3 +113,39 @@ def test_extraction_prompt_is_the_document_text_only():
 
 
 DOCS_ON_DISK = ["supplier_a_apex.pdf", "supplier_b_borealis.xlsx", "supplier_c_cobalt.eml.txt"]
+
+
+# --- negotiation (T20) ----------------------------------------------------------------------------
+
+
+def negotiation_prompts(today: date, request_, config) -> list[tuple]:
+    """Every Negotiation Agent prompt of the demo loop, with the clock at `today`: 4 drafts, 4 verdicts."""
+    recorder = _Recorder(ReplayCache(_NoNetwork(), model=recorded_model(DRAFT_TASK), mode="replay_only",
+                                     cache_dir=CACHE_DIR))
+    agents = build_agents(Settings(MODE="mock"))
+    agents["negotiation"] = LiveNegotiationAgent(recorder, Settings(MODE="mock"))
+    clock = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=7, minutes=3)
+    orch = Orchestrator(agents, RunStore(), now=lambda: clock)
+
+    run = orch.create_run(demo_request(today, request_), config)
+    orch.add_documents(run.run_id, DOCS)
+    run = orch.run_evaluation(run.run_id)
+    run = orch.confirm_quote_math(run.run_id, run.pending_human.quote_ids[0], use_computed=True)
+    orch.start_negotiation(run.run_id)
+    run = approve_all(orch, run.run_id)
+    assert run.state == S.RECOMMENDED
+    assert orch.agents["negotiation"].last_fallback is None, "every call answered from the cache"
+    return recorder.calls
+
+
+def test_negotiation_prompts_are_identical_on_any_day(request_, config):
+    """Offers, rounds and thread text only: no date, no doc id, nothing that moves with the calendar."""
+    prompts = {today: negotiation_prompts(today, request_, config) for today in TODAYS}
+    a, b = (prompts[t] for t in TODAYS)
+    assert [task for task, *_ in a] == [DRAFT_TASK, VERDICT_TASK] * 4
+    assert a == b, "the demo's negotiation prompts depend on the calendar"
+    for task, system, user, max_tokens, json_mode in a:
+        assert not ISO_DATE.search(user), f"a date leaked into the {task} input: {user}"
+        assert json.loads(payload_of_negotiation(user))
+        key = cache_key(recorded_model(task), task, system, user, max_tokens, json_mode)
+        assert (CACHE_DIR / task / f"{key}.json").exists(), f"{task} prompt not in the demo cache"

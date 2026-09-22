@@ -189,7 +189,7 @@ def test_tasks_outside_openclaw_tasks_go_straight_to_the_gateway():
 
 
 def test_openclaw_tasks_setting_parses_a_comma_list():
-    assert settings().openclaw_tasks == {"extract", "explain", "explain_diff", "draft"}
+    assert settings().openclaw_tasks == {"extract", "explain", "explain_diff", "draft", "negotiation_verdict"}
     assert settings(OPENCLAW_TASKS=" extract , draft,,").openclaw_tasks == {"extract", "draft"}
     assert settings(OPENCLAW_TASKS="").openclaw_tasks == frozenset()
     client = build_llm_client(settings(OPENCLAW_TASKS="extract"))

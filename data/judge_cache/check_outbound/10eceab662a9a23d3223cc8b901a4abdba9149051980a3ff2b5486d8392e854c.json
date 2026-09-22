@@ -1,0 +1,35 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "check_outbound",
+    "state": {
+      "message_addressed_to": "Borealis Manufacturing AS",
+      "other_suppliers_in_this_tender": [
+        "Apex Components Ltd",
+        "Cobalt Industrial"
+      ],
+      "message": "Dear Borealis Manufacturing AS,\n\nThank you for your revised quotation of 12.55 USD per unit with a 10-day lead time for 2,000 units of Product X.\n\nAs we finalize our decision, we would like to ask if you could offer a unit price of 11.55 USD and a lead time of 8 days for this order. These terms would significantly support our project timeline and budget considerations.\n\nWe appreciate your flexibility and look forward to your response.\n\nBest regards,\nProcureAI Demo Buyer"
+    },
+    "questions": {
+      "reveals_other_terms": {
+        "type": "noul",
+        "instructions": "This message reveals a price, offer or terms from a supplier other than Borealis Manufacturing AS."
+      },
+      "names_competitor": {
+        "type": "noul",
+        "instructions": "This message names or refers to a competing supplier."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "reveals_other_terms": 0.26,
+      "names_competitor": 0.11
+    },
+    "usage": {
+      "input_tokens": 467,
+      "output_tokens": 42
+    }
+  }
+}

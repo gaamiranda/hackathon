@@ -131,6 +131,12 @@ FALLBACK_SUMMARY: dict[str, dict[str, str]] = {
         "parse_error": "LLM extraction unusable; routing the document to human extraction",
         "llm_unavailable": "LLM gateway unavailable; routing the document to human extraction",
     },
+    "negotiation": {
+        "guard_trip": "LLM output rejected by the number guard; using the templated message",
+        "parse_error": "LLM returned no usable JSON; using the templated message",
+        "llm_unavailable": "LLM gateway unavailable; using the templated message",
+        "inconsistent_verdict": "LLM verdict not allowed at this point; using the deterministic rule",
+    },
 }
 
 
@@ -628,9 +634,14 @@ class Orchestrator:
             return False
         self._agent_finished(run, "negotiation", f"Draft ready: ask {target.unit_price}/unit, {target.lead_time_days} d",
                              {"supplier_id": sid, "round": round_no, "offer": _json(target)})
+        drafted = f"Round {round_no} draft for {sid} passed the outbound policy filter"
+        agent_summary = draft.get("summary")  # a live agent's one-liner; the templated agent has none
+        if agent_summary and not self._check_outbound(run, quote, thread, agent_summary, target, judge=False).ok:
+            agent_summary = None  # never shown, never sent; the engine's own wording stands
         self._transition(run, S.NEGOTIATION_DRAFTED, EventActor.AGENT, "negotiation.drafted",
-                         f"Round {round_no} draft for {sid} passed the outbound policy filter",
-                         {"supplier_id": sid, "round": round_no, "offer": _json(target), "draft": draft["message"]})
+                         f"{agent_summary} — draft passed the outbound policy filter" if agent_summary else drafted,
+                         {"supplier_id": sid, "round": round_no, "offer": _json(target), "draft": draft["message"],
+                          **({"agent_summary": agent_summary} if agent_summary else {})})
         run.pending_human = PendingHuman(
             kind=PendingHumanKind.NEGOTIATION_APPROVAL, quote_ids=[quote.quote_id],
             message=f"Approve round {round_no} negotiation message to {quote.supplier_name}",
@@ -647,10 +658,12 @@ class Orchestrator:
         self._agent_started(run, "negotiation", f"Evaluating {sid}'s round {round_no} reply",
                             {"supplier_id": sid, "round": round_no})
         verdict = self.agents["negotiation"].evaluate_counter(thread, counter, b)
+        # A live agent explains its verdict in one line; the templated agent has no reason to give (T20).
+        reason = getattr(self.agents["negotiation"], "last_reason", None)
         if verdict == "counter" and not can_open_turn(thread, b):  # G2: the agent cannot open a third turn
-            verdict = "close"
+            verdict, reason = "close", None
         if verdict == "accept" and counter is None:
-            verdict = "close"
+            verdict, reason = "close", None
         self._agent_finished(run, "negotiation", f"Verdict on {sid} round {round_no}: {verdict}",
                              {"supplier_id": sid, "round": round_no, "offer": _json(counter) if counter else None,
                               "verdict": verdict})
@@ -658,7 +671,8 @@ class Orchestrator:
                    f"{sid} round {round_no} completed: {verdict}"
                    + (f" ({buyer_turns(thread)}/{b.max_rounds} buyer turns used)" if verdict != "accept" else ""),
                    {"supplier_id": sid, "round": round_no, "offer": _json(counter) if counter else None,
-                    "verdict": verdict, "buyer_turns": buyer_turns(thread)})
+                    "verdict": verdict, "buyer_turns": buyer_turns(thread),
+                    **({"reason": reason} if reason else {})})
         if verdict == "counter":
             if self._draft_turn(run, thread, quote):
                 return
@@ -714,8 +728,11 @@ class Orchestrator:
         self._score_and_recommend(run, self._profiles(run), before)
 
     def _check_outbound(self, run: Run, quote: NormalizedQuote, thread: NegotiationThread, text: str,
-                        target: NegotiationOffer):
-        """Leakage filter (G3): only this supplier's own figures and the target may appear."""
+                        target: NegotiationOffer, *, judge: bool = True):
+        """Leakage filter (G3): only this supplier's own figures and the target may appear.
+
+        `judge=False` runs the deterministic filter alone, for text that is never sent to the supplier
+        (the live agent's timeline summary, T20) and so does not deserve a judge call."""
         profiles = self._profiles(run)
         for q in run.quotes:  # suppliers without history still must not be named
             profiles.setdefault(q.supplier_id, SupplierProfile(
@@ -733,9 +750,9 @@ class Orchestrator:
         result = check_outbound_message(text, profiles[quote.supplier_id], list(profiles.values()), allowed)
         # The judge can only add violations on top of the regex filter (D20); it never clears one.
         others = [p.name for sid, p in profiles.items() if sid != quote.supplier_id]
-        verdict = self._judge_call("check_outbound", lambda: self.judge.check_outbound(
+        verdict = judge and self._judge_call("check_outbound", lambda: self.judge.check_outbound(
             text, profiles[quote.supplier_id].name, others, allowed_amounts=allowed))
-        if verdict is not None and verdict.evaluated and verdict.leaks:
+        if verdict and verdict.evaluated and verdict.leaks:
             judged = [f"judge: {reason}" for reason in verdict.reasons] or ["judge: possible cross-supplier leak"]
             return PolicyResult(ok=False, violations=result.violations + judged)
         return result
