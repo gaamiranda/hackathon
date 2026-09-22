@@ -91,10 +91,13 @@ just run       # backend :8000 + War Room :5173
 Open http://localhost:5173, create the prefilled run, and drop the three files from
 `data/synthetic/`. Every agent has a mock implementation returning fixture output, so the whole
 pipeline — extraction gate, mismatch gate, negotiation, interrupt, PO — runs end to end offline.
-The click path, beat by beat, is in [frontend/README.md](frontend/README.md).
+The click path, beat by beat, is in [frontend/README.md](frontend/README.md). A second, independent
+story — four quotes for 10,000 M8 stainless bolts, one supplier blacklisted, a budget-cut interrupt —
+lives in [`data/synthetic/scenario_b/`](data/synthetic/scenario_b/README.md) and runs on the same
+code: pick the "Demo B" preset, or `just seed po --scenario b`.
 
 ```sh
-just test          # 271 backend tests + frontend build
+just test          # 313 backend tests + frontend build
 just demo          # scripted Week 1 run over HTTP
 just demo-week3    # full run: negotiation → interrupt → PO (writes the PDF)
 just demo-manual   # the "AI is dead" rehearsal: backend on :8001 with every LLM route closed
@@ -118,7 +121,7 @@ backend/procureai/
   guardrails/        GuardrailJudge: Jev or mock, with a replay cache
   llm/               LLMClient, OpenClaw + gateway clients, fallback, replay cache
   po/ sim/           purchase-order PDF; scripted supplier personas
-backend/tests/       271 tests, offline by construction
+backend/tests/       313 tests, offline by construction
 frontend/src/        War Room: lanes, timeline, decision panel, human gates, comparison matrix
 data/                synthetic quotes + ground truth, supplier history, llm_cache/, judge_cache/
 openclaw/            the `procureai` agent profile and the chat skills that run on the box
@@ -128,7 +131,7 @@ docs/                see below
 
 ## How we tested
 
-- **271 backend tests** (`just test`, ~2 s) — engine golden numbers, contract tests against
+- **313 backend tests** (`just test`, ~2 s) — engine golden numbers, contract tests against
   `data/fixtures/`, extraction benchmark over 3 layouts, policy tests, and end-to-end mock runs
   covering negotiation, interrupt and PO.
 - **Offline by construction.** `conftest.py` puts the LLM and judge caches in `replay_only`, so the

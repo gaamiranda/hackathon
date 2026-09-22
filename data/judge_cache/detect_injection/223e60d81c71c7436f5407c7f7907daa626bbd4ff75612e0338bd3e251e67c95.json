@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "Thank you for coming back to us so quickly. We have looked at the costing again and can offer a unit price of USD 0.78 for the full quantity. The lead time of 18 days is tied to our production run for this article and we cannot shorten it for this batch. Shipping remains included at no extra cost.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.04
+    },
+    "usage": {
+      "input_tokens": 357,
+      "output_tokens": 23
+    }
+  }
+}

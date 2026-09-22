@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "Thank you for your message and for the confidence you place in Eiger Metallwerk. Our quoted unit price already reflects the volume discount for this article and we are not able to go below it without changing the material specification. What we can do is release an earlier production slot: we would then deliver in 14 days from order confirmation instead of 15. We hope this is a step in the right direction.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.03
+    },
+    "usage": {
+      "input_tokens": 372,
+      "output_tokens": 23
+    }
+  }
+}

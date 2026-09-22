@@ -1,0 +1,36 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "check_outbound",
+    "state": {
+      "message_addressed_to": "Eiger Metallwerk GmbH",
+      "other_suppliers_in_this_tender": [
+        "Delta Trading",
+        "Fjord Components AS",
+        "Granite Fastener Co"
+      ],
+      "message": "Dear Eiger Metallwerk GmbH,\n\nThank you for your response and for offering the improved lead time of 14 days.\n\nWe have reviewed your offer of 0.83 USD per unit with a 14-day lead time for 10,000 units of M8 stainless hex bolts. To proceed with this order, we would need a unit price of 0.76 USD and a lead time of 12 days.\n\nWould you be able to accommodate this request? We value your partnership and look forward to your reply.\n\nBest regards,\nProcureAI Demo Buyer"
+    },
+    "questions": {
+      "reveals_other_terms": {
+        "type": "noul",
+        "instructions": "This message reveals a price, offer or terms from a supplier other than Eiger Metallwerk GmbH."
+      },
+      "names_competitor": {
+        "type": "noul",
+        "instructions": "This message names or refers to a competing supplier."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "reveals_other_terms": 0.12,
+      "names_competitor": 0.09
+    },
+    "usage": {
+      "input_tokens": 489,
+      "output_tokens": 42
+    }
+  }
+}

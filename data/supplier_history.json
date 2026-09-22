@@ -42,5 +42,38 @@
     "max_capacity_units": 5000,
     "blacklisted": true,
     "notes": "Blacklisted 2025-11 after repeated non-delivery."
+  },
+  {
+    "supplier_id": "sup_e",
+    "name": "Eiger Metallwerk GmbH",
+    "on_time_rate": 0.98,
+    "defect_rate": 0.004,
+    "orders_completed": 61,
+    "avg_lead_time_days": 14,
+    "max_capacity_units": 40000,
+    "blacklisted": false,
+    "notes": "Swiss precision fastener house; slowest of the shortlist, never late."
+  },
+  {
+    "supplier_id": "sup_f",
+    "name": "Fjord Components AS",
+    "on_time_rate": 0.9,
+    "defect_rate": 0.022,
+    "orders_completed": 29,
+    "avg_lead_time_days": 19,
+    "max_capacity_units": 25000,
+    "blacklisted": false,
+    "notes": "Keenest prices on stainless; make-to-order lead times and the weakest quality record still in tolerance."
+  },
+  {
+    "supplier_id": "sup_g",
+    "name": "Granite Fastener Co",
+    "on_time_rate": 0.96,
+    "defect_rate": 0.01,
+    "orders_completed": 44,
+    "avg_lead_time_days": 10,
+    "max_capacity_units": 30000,
+    "blacklisted": false,
+    "notes": "Stock house; fastest delivery, priced accordingly."
   }
 ]

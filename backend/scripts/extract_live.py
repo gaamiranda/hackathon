@@ -1,8 +1,9 @@
 """Run synthetic documents through the live Document Agent and check them against ground truth (T5).
 
 Live gateway calls are recorded in data/llm_cache/, so re-running costs nothing.
-Usage: cd backend && uv run python scripts/extract_live.py [FILE ...] [--record]
-       FILE is a name in data/synthetic/ or a path; no FILE means all three demo documents.
+Usage: cd backend && uv run python scripts/extract_live.py [FILE ...] [--record] [--scenario b]
+       FILE is a name in data/synthetic/ (or its scenario_b/ subdirectory) or a path;
+       no FILE means that scenario's demo documents.
 """
 
 import sys
@@ -17,8 +18,17 @@ from procureai.llm.factory import build_llm_client
 
 ROOT = Path(__file__).resolve().parents[2]
 SYNTHETIC = ROOT / "data" / "synthetic"
+SEARCH_DIRS = [SYNTHETIC, SYNTHETIC / "scenario_b"]
 DOCS = ["supplier_a_apex.pdf", "supplier_b_borealis.xlsx", "supplier_c_cobalt.eml.txt"]
+DOCS_B = ["supplier_d_delta.xlsx", "supplier_e_eiger.pdf", "supplier_f_fjord.eml.txt", "supplier_g_granite.pdf"]
 CHECKED = (*CRITICAL_FIELDS, "llm_stated_total", "supplier_id")
+
+
+def locate(name: str) -> Path:
+    """A path as given, else the first match in data/synthetic/ or data/synthetic/scenario_b/."""
+    if Path(name).exists():
+        return Path(name)
+    return next((d / name for d in SEARCH_DIRS if (d / name).exists()), SYNTHETIC / name)
 
 
 def as_document(path: Path) -> RawDocument:
@@ -38,17 +48,18 @@ def compare(quote: NormalizedQuote, expected_path: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    names = [a for a in argv if not a.startswith("-")] or DOCS
+    scenario = argv[argv.index("--scenario") + 1] if "--scenario" in argv else "a"
+    names = [a for a in argv if not a.startswith("-") and a not in ("a", "b")] or (DOCS_B if scenario == "b" else DOCS)
     settings = Settings(MODE="live", LLM_CACHE_MODE="record") if "--record" in argv else Settings(MODE="live")
     agent = LiveDocumentAgent(build_llm_client(settings))
 
     failures: list[str] = []
     for name in names:
-        path = Path(name) if Path(name).exists() else SYNTHETIC / name
+        path = locate(name)
         quote = agent.extract(as_document(path))
         print(f"\n=== {path.name} ===")
         print(quote.model_dump_json(indent=2, exclude={"raw_excerpt"}))
-        for problem in compare(quote, SYNTHETIC / f"{path.name}.expected.json"):
+        for problem in compare(quote, path.parent / f"{path.name}.expected.json"):
             failures.append(f"{path.name} {problem}")
 
     for failure in failures:

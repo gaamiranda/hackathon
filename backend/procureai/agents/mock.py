@@ -35,18 +35,24 @@ LOWCONF_VALUE = 0.5
 class MockDocumentAgent:
     """Returns data/synthetic/<filename>.expected.json for a known filename.
 
+    Scenario A's ground truths sit in data/synthetic/, scenario B's (T22) in data/synthetic/scenario_b/;
+    both directories are searched, so a filename alone selects the fixture regardless of scenario.
+
     `<name>_lowconf<ext>` (e.g. supplier_c_lowconf.eml.txt) maps to the matching supplier's ground truth
     with `unit_price` and `lead_time_days` confidence lowered to 0.5, to demo the extraction gate."""
 
     def __init__(self, synthetic_dir: Path = SYNTHETIC_DIR) -> None:
         self.synthetic_dir = synthetic_dir
+        # Root first: a name present in both directories resolves to scenario A.
+        self.search_dirs = [d for d in (synthetic_dir, *sorted(p for p in synthetic_dir.glob("*") if p.is_dir())) if d.is_dir()]
 
     def extract(self, doc: RawDocument) -> NormalizedQuote:
         name = Path(doc.filename).name
         lowconf = LOWCONF_TOKEN in name
         expected = self._ground_truth(name)
         if expected is None:
-            known = sorted(p.name.removesuffix(".expected.json") for p in self.synthetic_dir.glob("*.expected.json"))
+            known = sorted(p.name.removesuffix(".expected.json")
+                           for d in self.search_dirs for p in d.glob("*.expected.json"))
             raise FileNotFoundError(
                 f"MockDocumentAgent has no ground truth for '{doc.filename}'. Known files: {known}"
             )
@@ -57,17 +63,25 @@ class MockDocumentAgent:
         return quote.model_copy(update={"doc_id": doc.doc_id, "field_confidence": confidence})
 
     def _ground_truth(self, name: str) -> Path | None:
-        direct = self.synthetic_dir / f"{name}.expected.json"
+        for directory in self.search_dirs:
+            found = self._ground_truth_in(directory, name)
+            if found is not None:
+                return found
+        return None
+
+    @staticmethod
+    def _ground_truth_in(directory: Path, name: str) -> Path | None:
+        direct = directory / f"{name}.expected.json"
         if direct.exists():
             return direct
         if LOWCONF_TOKEN not in name:
             return None
         # supplier_c_cobalt_lowconf.eml.txt → supplier_c_cobalt.eml.txt; supplier_c_lowconf.eml.txt → supplier_c_*.eml.txt
-        stripped = self.synthetic_dir / f"{name.replace('_' + LOWCONF_TOKEN, '').replace(LOWCONF_TOKEN, '')}.expected.json"
+        stripped = directory / f"{name.replace('_' + LOWCONF_TOKEN, '').replace(LOWCONF_TOKEN, '')}.expected.json"
         if stripped.exists():
             return stripped
         prefix, _, suffix = name.partition(LOWCONF_TOKEN)
-        matches = sorted(self.synthetic_dir.glob(f"{prefix}*{suffix}.expected.json"))
+        matches = sorted(directory.glob(f"{prefix}*{suffix}.expected.json"))
         return matches[0] if len(matches) == 1 else None
 
 

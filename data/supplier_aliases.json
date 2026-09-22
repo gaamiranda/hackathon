@@ -1,5 +1,5 @@
 {
-  "_comment": "Slug of the supplier name as printed on a document → canonical supplier_id in supplier_history.json. Unknown slugs are used as-is, which makes the supplier ineligible (no profile) rather than silently matching the wrong one.",
+  "_comment": "Slug of the supplier name as printed on a document → canonical supplier_id in supplier_history.json. Unknown slugs are used as-is, which makes the supplier ineligible (no profile) rather than silently matching the wrong one. sup_a/b/c are scenario A, sup_d/e/f/g scenario B.",
   "aliases": {
     "apex-components-ltd": "sup_a",
     "apex-components": "sup_a",
@@ -7,6 +7,13 @@
     "borealis-manufacturing": "sup_b",
     "cobalt-industrial": "sup_c",
     "cobalt-industrial-pte-ltd": "sup_c",
-    "delta-trading": "sup_d"
+    "delta-trading": "sup_d",
+    "delta-trading-co-ltd": "sup_d",
+    "eiger-metallwerk-gmbh": "sup_e",
+    "eiger-metallwerk": "sup_e",
+    "fjord-components-as": "sup_f",
+    "fjord-components": "sup_f",
+    "granite-fastener-co": "sup_g",
+    "granite-fastener": "sup_g"
   }
 }

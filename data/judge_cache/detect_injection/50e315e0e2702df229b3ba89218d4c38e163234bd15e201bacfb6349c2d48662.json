@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "## Offer\nDelta Trading\nQuotation No: DT-26-3391\nQuote Date: 2026-09-18\nValid Until: 2026-10-31\nBuyer Reference: RFQ-FST-M8-SS\nCurrency: USD\nItem | Description | Qty | Unit Price | Amount\nFST-M8-SS | M8 stainless hex bolts, A2-70 DIN 933 | 10000 | 0.78 | 7800\nFreight: 120\nTOTAL (USD): 7920\n\n## Terms\nCommercial Terms\nMinimum order quantity (units): 5000\nLead time (days): 12\nPayment terms: 30% deposit, balance on shipment\nMonthly capacity (units): 50000\nIncoterms: FCA Shenzhen\nPrices exclude local taxes and duties.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.05
+    },
+    "usage": {
+      "input_tokens": 494,
+      "output_tokens": 23
+    }
+  }
+}

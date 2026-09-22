@@ -43,3 +43,11 @@ copy whose name contains `lowconf` (e.g. `supplier_c_cobalt.eml.txt` renamed to
 `unit_price` and `lead_time_days` confidence lowered to 0.5, below `min_confidence`
 (0.85). The run stops in `NEEDS_HUMAN_EXTRACTION` with `pending_human.details.fields`
 listing both; `POST /runs/{id}/quotes/{qid}/correct` with those fields resumes it.
+
+## Scenario B
+
+[`scenario_b/`](scenario_b/README.md) holds a second, independent story — 10,000 M8
+stainless hex bolts, four suppliers, one of them blacklisted, and a budget-cut interrupt —
+written by `just regen` from the same generator (`--scenario b`) and driven by
+`just seed STAGE --scenario b`. It exists to show that the pipeline is not tuned to
+Product X: different products, layouts, failure modes and winner, same engine.

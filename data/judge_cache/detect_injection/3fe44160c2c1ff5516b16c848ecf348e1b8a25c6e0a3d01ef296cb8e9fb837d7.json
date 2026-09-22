@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "We appreciate your patience. Our final position is a unit price of USD 0.77 for the full quantity, shipping included, and we have managed to find one day in the schedule, so we can commit to 17 days from order confirmation. We would be glad to start production on your confirmation.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.05
+    },
+    "usage": {
+      "input_tokens": 351,
+      "output_tokens": 23
+    }
+  }
+}

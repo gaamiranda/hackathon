@@ -1,0 +1,63 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "verify_extraction",
+    "state": "GRANITE FASTENER CO\nQuotation GFC-Q-4402    Page 1 of 1\nBuyer reference ....................................................\nRFQ-FST-M8-SS\nQuote date ............................................................\n2026-09-18\nValid until ..............................................................\n2026-10-31\nCurrency ...............................................................\nUSD\nITEM\n Article ....................................................................\nFST-M8-SS\nDescription ............................................................\nM8 stainless hex bolts, A2-70\nQuantity quoted .....................................................\n10,000 units\nUnit price ...............................................................\n0.84\nDiscount ................................................................\nnone\nCHARGES\n Freight and packing ..............................................\n250.00\nQuotation total (ex-tax) .........................................\n8,560.00\nCOMMERCIAL TERMS\n Minimum order quantity ........................................\n1,000 units\nLead time ..............................................................\n9 days ex works\nPayment terms ......................................................\nNet 30\nMonthly capacity ...................................................\n30,000 units\n88 Ironside Way, Sheffield S9 1TH, United Kingdom",
+    "questions": {
+      "unit_price": {
+        "type": "noul",
+        "instructions": "The document states that the unit price is 0.84 per unit.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "currency": {
+        "type": "noul",
+        "instructions": "The document states that the currency of the prices is USD.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "moq": {
+        "type": "noul",
+        "instructions": "The document states that the minimum order quantity (MOQ) is 1,000 units.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "lead_time_days": {
+        "type": "noul",
+        "instructions": "The document states that the lead time is 9 days.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      },
+      "quantity_quoted": {
+        "type": "noul",
+        "instructions": "The document states that the quoted quantity is 10,000 units.",
+        "criteria": {
+          "true": "The document explicitly gives exactly this value for this field.",
+          "false": "The document gives a different value for this field, or does not state it at all."
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "unit_price": 0.99,
+      "currency": 0.99,
+      "moq": 0.99,
+      "lead_time_days": 0.98,
+      "quantity_quoted": 0.99
+    },
+    "usage": {
+      "input_tokens": 876,
+      "output_tokens": 91
+    }
+  }
+}

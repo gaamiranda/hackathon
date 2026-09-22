@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "GRANITE FASTENER CO\nQuotation GFC-Q-4402    Page 1 of 1\nBuyer reference ....................................................\nRFQ-FST-M8-SS\nQuote date ............................................................\n2026-09-18\nValid until ..............................................................\n2026-10-31\nCurrency ...............................................................\nUSD\nITEM\n Article ....................................................................\nFST-M8-SS\nDescription ............................................................\nM8 stainless hex bolts, A2-70\nQuantity quoted .....................................................\n10,000 units\nUnit price ...............................................................\n0.84\nDiscount ................................................................\nnone\nCHARGES\n Freight and packing ..............................................\n250.00\nQuotation total (ex-tax) .........................................\n8,560.00\nCOMMERCIAL TERMS\n Minimum order quantity ........................................\n1,000 units\nLead time ..............................................................\n9 days ex works\nPayment terms ......................................................\nNet 30\nMonthly capacity ...................................................\n30,000 units\n88 Ironside Way, Sheffield S9 1TH, United Kingdom",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.04
+    },
+    "usage": {
+      "input_tokens": 568,
+      "output_tokens": 23
+    }
+  }
+}

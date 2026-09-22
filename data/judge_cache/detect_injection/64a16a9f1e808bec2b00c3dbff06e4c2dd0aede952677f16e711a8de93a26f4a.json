@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "Eiger Metallwerk GmbH\nIndustriestrasse 44, 8640 Rapperswil, Switzerland\n+41 55 555 0177  ·  verkauf@eiger-metallwerk.example\n18 September 2026\nQuotation EMW-2026-1187\nDear Procurement Team,\nThank you for your enquiry RFQ-FST-M8-SS. We are pleased to quote as follows for\nM8 stainless hex bolts (A2-70, DIN 933), article FST-M8-SS.\nFor the requested quantity of 10,000 units we offer a unit price of USD 0.83.\nOn this order we apply a volume discount of 3 per cent, and freight to your\nnominated forwarder is charged at USD 180.00. The resulting total for this\nquotation is USD 8,231.00, excluding any local taxes and duties.\nOur minimum order quantity for this article is 2,000 units. Delivery is\n15 days from written order confirmation. Payment terms are Net 30 from\ninvoice date. Our current monthly capacity for this article is 40,000 units.\nThis quotation is valid until 31 October 2026. All prices are quoted in USD.\nWe would be glad to receive your order and remain at your disposal for any\nquestion you may have.\nYours sincerely,\nM. Brunner\nSales Director, Eiger Metallwerk GmbH",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.03
+    },
+    "usage": {
+      "input_tokens": 632,
+      "output_tokens": 23
+    }
+  }
+}

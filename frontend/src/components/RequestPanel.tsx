@@ -8,8 +8,13 @@ const CRITICAL = ['unit_price', 'currency', 'moq', 'lead_time_days', 'quantity_q
 const ACCEPT = '.pdf,.xlsx,.txt,.eml'
 /** States that accept POST /runs/{id}/interrupt (D22). */
 const INTERRUPTIBLE: WorkflowState[] = ['RECOMMENDED', 'EXTRACTED', 'AWAITING_NEGOTIATION_APPROVAL', 'AWAITING_PO_APPROVAL']
-/** The §15 demo moment: Borealis (capacity 4,000) drops out, Cobalt takes over. */
-const DEMO_PRESET = { quantity: 5000, budget: '75000.00', reason: 'Customer order upsized' }
+/** The two scripted interrupt moments, in step with backend/scripts/seed_demo.py.
+ *  A (§15): quantity 2,000 → 5,000, so Borealis (capacity 4,000) drops out and Cobalt takes over.
+ *  B (T22): budget 9,500 → 8,700 with the quantity untouched, so Eiger goes over budget and Fjord takes over. */
+const DEMO_PRESETS: { label: string; quantity?: number; budget: string; reason: string }[] = [
+  { label: 'Demo A: 2,000 → 5,000 units, budget 75,000', quantity: 5000, budget: '75000.00', reason: 'Customer order upsized' },
+  { label: 'Demo B: budget 9,500 → 8,700', budget: '8700.00', reason: 'Budget cut by finance' },
+]
 
 export function RequestPanel({ run, onRun, quoteByDoc }: { run: Run; onRun: (r: Run) => void; quoteByDoc: Record<string, string> }) {
   const [error, setError] = useState<string | null>(null)
@@ -144,12 +149,12 @@ function InjectChange({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
     required_by: requiredBy !== '' && requiredBy !== r.required_by,
   }
   const anyChange = changed.quantity || changed.budget || changed.required_by
-  const presetActive = qty === DEMO_PRESET.quantity && Number(budget) === Number(DEMO_PRESET.budget)
+  const isActive = (preset: (typeof DEMO_PRESETS)[number]) => qty === (preset.quantity ?? r.quantity) && Number(budget) === Number(preset.budget)
 
-  const applyPreset = () => {
-    setQuantity(String(DEMO_PRESET.quantity))
-    setBudget(DEMO_PRESET.budget)
-    setReason(DEMO_PRESET.reason)
+  const applyPreset = (preset: (typeof DEMO_PRESETS)[number]) => {
+    setQuantity(String(preset.quantity ?? r.quantity))
+    setBudget(preset.budget)
+    setReason(preset.reason)
     setError(null)
   }
 
@@ -184,14 +189,19 @@ function InjectChange({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
         Change the requirement mid-workflow; the agents replan on the quotes already extracted
         {run.state === 'AWAITING_NEGOTIATION_APPROVAL' ? ' and the unsent negotiation draft is discarded.' : run.state === 'AWAITING_PO_APPROVAL' ? ' and the unapproved PO preview is discarded.' : '.'}
       </p>
-      <button
-        type="button"
-        onClick={applyPreset}
-        className={`mt-2 w-full rounded border px-2 py-1 text-left text-xs transition-colors ${presetActive ? 'border-red-600 bg-red-900/40 text-red-100' : 'border-zinc-700 text-zinc-300 hover:border-red-700 hover:bg-red-950/40'}`}
-        title="fills the fields below; nothing is sent until you click Inject"
-      >
-        Demo: 2,000 → 5,000 units, budget 75,000
-      </button>
+      <div className="mt-2 space-y-1">
+        {DEMO_PRESETS.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            onClick={() => applyPreset(preset)}
+            className={`w-full rounded border px-2 py-1 text-left text-xs transition-colors ${isActive(preset) ? 'border-red-600 bg-red-900/40 text-red-100' : 'border-zinc-700 text-zinc-300 hover:border-red-700 hover:bg-red-950/40'}`}
+            title="fills the fields below; nothing is sent until you click Inject"
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
       <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
         <label className="space-y-0.5">
           <span className="text-zinc-500">Quantity{changed.quantity && <span className="text-red-300"> *</span>}</span>

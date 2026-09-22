@@ -1,0 +1,36 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "check_outbound",
+    "state": {
+      "message_addressed_to": "Fjord Components AS",
+      "other_suppliers_in_this_tender": [
+        "Delta Trading",
+        "Eiger Metallwerk GmbH",
+        "Granite Fastener Co"
+      ],
+      "message": "Dear Fjord Components AS,\n\nThank you for your revised quotation of 0.78 USD per unit with an 18-day lead time for 10,000 M8 stainless hex bolts.\n\nWe appreciate your efforts to accommodate our requirements. To finalize this order, we would need a unit price of 0.72 USD and a lead time of 16 days.\n\nIf you are able to meet these terms, we are ready to proceed. Please let us know if this is possible.\n\nWe value working with you and look forward to your response.\n\nBest regards,\nProcureAI Demo Buyer"
+    },
+    "questions": {
+      "reveals_other_terms": {
+        "type": "noul",
+        "instructions": "This message reveals a price, offer or terms from a supplier other than Fjord Components AS."
+      },
+      "names_competitor": {
+        "type": "noul",
+        "instructions": "This message names or refers to a competing supplier."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "reveals_other_terms": 0.13,
+      "names_competitor": 0.16
+    },
+    "usage": {
+      "input_tokens": 489,
+      "output_tokens": 42
+    }
+  }
+}

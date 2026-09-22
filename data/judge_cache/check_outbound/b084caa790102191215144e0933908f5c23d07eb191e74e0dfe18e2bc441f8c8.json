@@ -1,0 +1,36 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "check_outbound",
+    "state": {
+      "message_addressed_to": "Eiger Metallwerk GmbH",
+      "other_suppliers_in_this_tender": [
+        "Delta Trading",
+        "Fjord Components AS",
+        "Granite Fastener Co"
+      ],
+      "message": "Dear Eiger Metallwerk GmbH team,\n\nThank you for your revised offer of USD 0.83 per unit with a 14-day lead time; we appreciate the movement. To close this order today we would need USD 0.76 per unit and delivery within 12 days. Could you confirm whether you can meet these terms? We are ready to confirm the order promptly on your reply.\n\nKind regards,\nProcurement Team"
+    },
+    "questions": {
+      "reveals_other_terms": {
+        "type": "noul",
+        "instructions": "This message reveals a price, offer or terms from a supplier other than Eiger Metallwerk GmbH."
+      },
+      "names_competitor": {
+        "type": "noul",
+        "instructions": "This message names or refers to a competing supplier."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "reveals_other_terms": 0.12,
+      "names_competitor": 0.23
+    },
+    "usage": {
+      "input_tokens": 457,
+      "output_tokens": 42
+    }
+  }
+}

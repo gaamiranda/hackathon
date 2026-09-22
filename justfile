@@ -43,7 +43,7 @@ demo-manual:
       GUARDRAIL_JUDGE=mock RUN_STORE_DIR="" CORS_ORIGINS='["http://localhost:5173","http://localhost:5174"]' \
       uv run uvicorn procureai.api.app:app --port 8001
 
-# Regenerate JSON schemas and synthetic quotes
+# Regenerate JSON schemas and the synthetic quotes for both scenarios (output is byte-stable: no diff when nothing changed)
 regen:
     cd backend && uv run python scripts/export_schemas.py
     cd backend && uv run python scripts/generate_synthetic_quotes.py
@@ -89,7 +89,8 @@ clear-runs:
     ssh -i "$key" "$host" "rm -rf $dir/* && systemctl --user restart procureai-backend && sleep 2 && curl -s http://127.0.0.1:8000/health"
     echo
 
-# Seed a fresh demo run to STAGE (created | extracted | mismatch | recommended | negotiated | replanned | po) on the box; --base http://127.0.0.1:8000 for a local backend
+# Seed a fresh demo run to STAGE (created | extracted | mismatch | recommended | negotiated | replanned | po) on the box;
+# --scenario b for the second story (10,000 M8 bolts, budget cut); --base http://127.0.0.1:8000 for a local backend
 seed STAGE *ARGS:
     @cd backend && uv run python scripts/seed_demo.py {{ STAGE }} {{ ARGS }}
 

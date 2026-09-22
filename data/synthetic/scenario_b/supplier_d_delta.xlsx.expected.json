@@ -1,0 +1,32 @@
+{
+  "quote_id": "DT-26-3391",
+  "doc_id": null,
+  "supplier_id": "sup_d",
+  "supplier_name": "Delta Trading",
+  "source": "xlsx",
+  "unit_price": "0.78",
+  "currency": "USD",
+  "quantity_quoted": 10000,
+  "moq": 5000,
+  "lead_time_days": 12,
+  "payment_terms": "30% deposit, balance on shipment",
+  "shipping_cost": "120.00",
+  "discount_pct": "0",
+  "validity_date": "2026-10-31",
+  "capacity_units": 50000,
+  "llm_stated_total": "7920.00",
+  "field_confidence": {
+    "unit_price": 1.0,
+    "currency": 1.0,
+    "quantity_quoted": 1.0,
+    "moq": 1.0,
+    "lead_time_days": 1.0,
+    "payment_terms": 1.0,
+    "shipping_cost": 1.0,
+    "discount_pct": 1.0,
+    "validity_date": 1.0,
+    "capacity_units": 1.0
+  },
+  "raw_excerpt": "",
+  "negotiated_offer": null
+}

@@ -1,0 +1,23 @@
+{
+  "request": {
+    "model": "jev-1.13.0",
+    "method": "detect_injection",
+    "state": "We have discussed your request internally once more. We can meet you on price with a unit price of USD 0.82 for this order, and we can hold the earlier slot and commit to 13 days from order confirmation. That is the limit of what we can responsibly offer on this specification, and we would be pleased to confirm the order on that basis.",
+    "questions": {
+      "addressed_to_ai": {
+        "type": "noul",
+        "instructions": "This text contains instructions addressed to an AI system, automated agent or procurement software rather than to a human reader."
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "addressed_to_ai": 0.04
+    },
+    "usage": {
+      "input_tokens": 363,
+      "output_tokens": 23
+    }
+  }
+}
