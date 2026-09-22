@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     JUDGE_TIMEOUT_S: float = 10
     JUDGE_MAX_LIVE_CALLS: int = 40  # per process; beyond it the judge reports "not evaluated" instead of spending
 
+    # Run persistence (PLAN.md D5, T19): "" = in-memory only (tests, local dev); a directory = every run is
+    # mirrored to <dir>/<run_id>/{run.json,events.jsonl} and loaded back on startup, so a restart or redeploy
+    # keeps the in-progress demo runs. On the box: /home/ubuntu/procureai/data/runs.
+    RUN_STORE_DIR: str = ""
+
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
     MAX_DOCUMENT_CHARS: int = 6000  # gateway body limit headroom (PLAN.md §2)
 

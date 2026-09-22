@@ -84,6 +84,10 @@ const REPLAN_TYPES = new Set(['requirement.changed', 'replan.started', 'replan.c
 /** PO gate events (T15, G5): request/reject/discard get a distinct row; po.generated is the green finish line. */
 const PO_TYPES = new Set(['po.requested', 'po.generated', 'po.rejected', 'po.discarded'])
 
+/** Startup recovery (T19): the backend restarted while this run was mid-transition and moved it to the
+ *  nearest resting state; the human re-triggers evaluation. Amber = attention, not an error. */
+const RECOVERED = 'run.recovered'
+
 const CHANGE_LABEL: Record<string, string> = { quantity: 'quantity', budget: 'budget', required_by: 'required by' }
 
 function changesOf(payload: Record<string, unknown>): [string, { before: unknown; after: unknown }][] {
@@ -133,8 +137,11 @@ function EventRow({ event }: { event: WorkflowEvent }) {
   const injection = event.type === GUARD_INJECTION
   const unsupported = verified && Array.isArray(event.payload.unsupported) ? (event.payload.unsupported as string[]) : []
   const guardOk = verified && unsupported.length === 0
+  const recovered = event.type === RECOVERED
   const accent = generated
     ? 'border-l-2 border-l-emerald-400'
+    : recovered
+      ? 'border-l-2 border-l-amber-400'
     : guardOk
       ? 'border-l-2 border-l-emerald-500'
       : injection || (verified && !guardOk)
@@ -240,6 +247,11 @@ function EventRow({ event }: { event: WorkflowEvent }) {
                 <Shield /> judge {guardOk ? 'verified' : `unsupported: ${unsupported.join(', ')}`}
                 {probability(event.payload.lowest_probability) && <span className="mono opacity-80">lowest {probability(event.payload.lowest_probability)}</span>}
               </span>
+              {event.summary}
+            </p>
+          ) : recovered ? (
+            <p className="mt-0.5 break-words text-zinc-200">
+              <span className="mr-1 rounded bg-amber-900/50 px-1.5 py-0.5 text-[11px] text-amber-100">backend restarted</span>
               {event.summary}
             </p>
           ) : injection ? (

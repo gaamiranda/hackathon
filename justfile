@@ -67,6 +67,19 @@ tunnel-reverse:
 deploy *ARGS:
     scripts/deploy.sh {{ ARGS }}
 
+# Delete every persisted run on the box (RUN_STORE_DIR) and restart the backend, e.g. right before the demo; asks first
+clear-runs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    host=ubuntu@47.129.120.76; key=~/.ssh/LightsailDefaultKey-ap-southeast-1.pem; dir=/home/ubuntu/procureai/data/runs
+    n=$(ssh -i "$key" "$host" "ls -1 $dir 2>/dev/null | wc -l" | tr -d ' ')
+    echo "$n run(s) in $host:$dir"
+    [[ "$n" == "0" ]] && exit 0
+    read -r -p "Delete them all and restart procureai-backend? [y/N] " ans
+    [[ "$ans" == "y" || "$ans" == "Y" ]] || { echo "aborted"; exit 1; }
+    ssh -i "$key" "$host" "rm -rf $dir/* && systemctl --user restart procureai-backend && sleep 2 && curl -s http://127.0.0.1:8000/health"
+    echo
+
 # Week 1 demo over HTTP against a running backend
 demo:
     cd backend && uv run python scripts/demo_week1.py

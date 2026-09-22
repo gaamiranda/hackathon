@@ -29,7 +29,10 @@ class EventBus:
         state_before: WorkflowState | None = None,
         state_after: WorkflowState | None = None,
     ) -> WorkflowEvent:
-        """Append one event with the next seq for the run and notify subscribers (sync, in order)."""
+        """Append one event with the next seq for the run and notify subscribers (sync, in order).
+
+        The run is re-put after the event: the orchestrator mutates it in place before emitting, so this
+        is what keeps run.json in step with events.jsonl when the store is persisted (T19)."""
         with self.store.lock:
             event = WorkflowEvent(
                 run_id=run.run_id,
@@ -43,6 +46,7 @@ class EventBus:
                 summary=summary,
             )
             self.store.append_event(event)
+            self.store.put(run)
             listeners = list(self._subs.get(run.run_id, [])) + list(self._global)
         for cb in listeners:
             cb(event)

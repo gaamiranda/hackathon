@@ -22,6 +22,9 @@ frontend/dist/
 # Demo output (generated purchase order PDFs)
 backend/out/
 
+# Persisted runs (RUN_STORE_DIR, T19): per-box state, never committed
+data/runs/
+
 # LLM record/replay cache is COMMITTED on purpose: tests and demos replay it instead of
 # spending the shared token credit (PLAN.md risk 2b).
 

@@ -3,6 +3,7 @@
 from procureai.workflow.errors import WorkflowError
 from procureai.workflow.events import EventBus
 from procureai.workflow.orchestrator import Orchestrator
+from procureai.workflow.persistence import FileRunRepository, restore_runs
 from procureai.workflow.store import RunStore
 
-__all__ = ["EventBus", "Orchestrator", "RunStore", "WorkflowError"]
+__all__ = ["EventBus", "FileRunRepository", "Orchestrator", "RunStore", "WorkflowError", "restore_runs"]

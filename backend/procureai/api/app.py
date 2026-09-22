@@ -50,4 +50,5 @@ def health(request: Request) -> dict[str, object]:
         "guardrail_judge": s.GUARDRAIL_JUDGE,
         "judge_model": s.TYPESAFE_MODEL if s.GUARDRAIL_JUDGE == "jev" else None,
         "runs": len(get_orchestrator(request).store.list_runs()),
+        "runs_persisted": get_orchestrator(request).store.persisted,
     }

@@ -20,6 +20,7 @@ firewall; 8000 and 18789 are loopback-only and are never proxied.
 | OpenClaw unit | `openclaw-gateway.service` — systemd **user** unit (docs/OPENCLAW.md) |
 | Skills | `~/.openclaw/workspace/skills/` ← `openclaw/skills/` (synced on every deploy, hot-reloaded) |
 | LLM cache on the box | `/home/ubuntu/procureai/data/llm_cache/`, `data/judge_cache/` (rsynced from the repo; new entries are written there) |
+| Persisted runs | `/home/ubuntu/procureai/data/runs/<run_id>/{run.json,events.jsonl}` (`RUN_STORE_DIR`; box-only, never rsynced or deleted by a deploy) |
 
 Both units are user units because OpenClaw's installer made its own one that way; `loginctl enable-linger ubuntu`
 is on, so they survive logout and reboot. `sudo systemctl … procureai-backend` does **not** work — always `--user`.
@@ -34,14 +35,15 @@ ssh ubuntu@47.129.120.76 'sudo tail -f /var/log/nginx/access.log /var/log/nginx/
 
 # status / restart
 systemctl --user status procureai-backend       # on the box
-systemctl --user restart procureai-backend      # ~2 s; clears the in-memory runs (see below)
+systemctl --user restart procureai-backend      # ~2 s; runs are reloaded from data/runs (see below)
 sudo systemctl reload nginx
 
 # health (what the header of the War Room shows)
 curl -s http://127.0.0.1:8000/health            # on the box
 curl -s http://47.129.120.76/api/health         # from anywhere
 # → {"mode":"live","llm_gateway":"configured","llm_backend":"openclaw","openclaw":"reachable",
-#    "openclaw_tasks":["draft","explain","explain_diff","extract"],"guardrail_judge":"jev","judge_model":"jev-1.13.0","runs":N}
+#    "openclaw_tasks":["draft","explain","explain_diff","extract"],"guardrail_judge":"jev","judge_model":"jev-1.13.0",
+#    "runs":N,"runs_persisted":true}
 ```
 
 ## Redeploy: `just deploy`
@@ -50,7 +52,7 @@ curl -s http://47.129.120.76/api/health         # from anywhere
 
 1. `frontend`: `npm ci` if `node_modules` is missing, then `VITE_API_URL=/api npm run build`
 2. `rsync` the checkout to `/home/ubuntu/procureai` — excluding `.git`, `node_modules`, `.venv`, `backend/out`,
-   `.env` (protected: the box's copy is never overwritten or deleted), caches and the planning PDFs
+   `.env` and `data/runs` (both protected: the box's copies are never overwritten or deleted), caches and the planning PDFs
 3. on the box: install `uv`/`nginx` if missing → `uv sync --frozen --no-dev` → install the unit and the nginx site
    from `deploy/` → copy `frontend/dist` to `/var/www/procureai` → sync the OpenClaw skills → restart the backend →
    reload nginx → print `/health`
@@ -62,13 +64,37 @@ without it. A deploy from a clean checkout takes ~1 min (uv sync dominates the f
 
 The box's `.env` differs from a laptop's in: `MODE=live`, `LLM_BACKEND=openclaw`, `OPENCLAW_URL=http://127.0.0.1:18789`
 (loopback, no tunnel), `GUARDRAIL_JUDGE=jev`, `LLM_CACHE_MODE=replay_or_record`, `JUDGE_CACHE_MODE=replay_or_record`,
-`CORS_ORIGINS=["http://47.129.120.76"]` (same-origin through nginx, so CORS is belt and braces).
+`CORS_ORIGINS=["http://47.129.120.76"]` (same-origin through nginx, so CORS is belt and braces),
+`RUN_STORE_DIR=/home/ubuntu/procureai/data/runs` (see next section).
 
-**What a backend restart clears.** `RunStore` is in memory and per process (PLAN.md D5): every restart — a deploy,
-a crash, a reboot — empties the run list, and the War Room shows a 404 on a run page that was open. Fine for the
-demo: a full run is recreated in under a minute. That is also why the unit runs `--workers 1`: a second worker would
-have its own, different, run list. Events, negotiations and generated POs live in the same store; PDFs are rendered on
-request from the stored PO, so nothing is written to disk on the box except the LLM/judge caches.
+## Runs survive a restart: `RUN_STORE_DIR`
+
+`RunStore` is in memory and per process (PLAN.md D5), but with `RUN_STORE_DIR` set every write is mirrored to disk
+(T19, `backend/procureai/workflow/persistence.py`) and loaded back on startup, so a restart, a redeploy, a crash or a
+reboot keeps the in-progress runs and an open War Room page simply reconnects its stream. Unset (the default, tests and
+local dev) nothing is written and a restart clears the runs as before. `/health` reports `runs_persisted`.
+
+- **Files:** `<RUN_STORE_DIR>/<run_id>/run.json` (the full `Run`, rewritten atomically — temp file + rename — after
+  every event) and `events.jsonl` (one `WorkflowEvent` per line, append-only, fsync'd per event). Both are written
+  inside the store lock, so they cannot diverge. Measured on the box (ext4): ~7 ms per event (two fsyncs), ~0.6 s over a
+  full 79-event run, i.e. invisible next to one ~3 s LLM call. Only `RunStore` writes them.
+- **Startup:** the directory is scanned, every `run.json` + `events.jsonl` is validated through the pydantic models and
+  the log says `loaded N runs from …` (`journalctl --user -u procureai-backend`). A directory that does not parse is
+  logged as `skipping run directory …` and ignored — it never stops the backend; a partial last event line (a crash
+  mid-append) is dropped, the rest of the log is kept. Seq numbers continue from the last persisted event.
+- **Runs caught mid-transition:** a run whose `run.json` shows a transient state (EXTRACTING, VALIDATING, ENRICHING,
+  SCORING, NEGOTIATION_DRAFTED, NEGOTIATING, COUNTER_RECEIVED, RE_SCORING, REPLANNING — the process died inside one
+  orchestrator call) gets an amber `run.recovered` event and is moved to the nearest resting state: **RECOMMENDED** if
+  it has scorecards, else **EXTRACTED** if it has quotes, else **CREATED**; the human then re-triggers (evaluate /
+  negotiate / interrupt). Waiting states (NEEDS_HUMAN_EXTRACTION, CALC_MISMATCH, AWAITING_*) and resting states are
+  loaded as they were, pending gate included, and are immediately usable.
+- **Clear old runs before the demo:** `just clear-runs` — counts the runs on the box, asks for confirmation, then
+  deletes the directory contents over ssh and restarts the backend so the run list starts empty. By hand:
+  `ssh ubuntu@47.129.120.76 'rm -rf ~/procureai/data/runs/* && systemctl --user restart procureai-backend'`.
+- **Copy a run home** (for a bug report or to replay its timeline): `rsync -az ubuntu@47.129.120.76:procureai/data/runs/<run_id>/ /tmp/<run_id>/`.
+
+`--workers 1` stays: a second worker would have its own run list and write the same files. PO PDFs are still rendered
+on request from the stored PO, so the run directories and the LLM/judge caches are the only things the backend writes.
 
 ## The LLM cache on the box
 
@@ -90,11 +116,12 @@ rationales, the two change explanations — all recorded through OpenClaw in T10
 
 | Symptom | Switch |
 |---|---|
+| A persisted run keeps breaking startup or the UI | `just clear-runs`, or delete just that run's directory under `data/runs/` and restart. A run that fails validation is skipped automatically. |
 | OpenClaw down / slow / restarting | nothing to do: the fallback answers from the direct gateway per call ("via gateway"). To stop trying OpenClaw at all: `LLM_BACKEND=gateway`. |
 | One task's prose keeps tripping the number guard through OpenClaw (templated text in the timeline) | `OPENCLAW_TASKS=extract,explain_diff,draft` (drop the task; it goes to the direct gateway) |
 | Gateway 429 / credit exhausted / no network | `MODE=mock` — every agent answers from fixtures; the whole demo still runs (PLAN.md D3). |
 | Jev unavailable | `GUARDRAIL_JUDGE=mock` (or leave it: a judge failure yields "not evaluated" and the workflow continues) |
-| Backend wedged | `systemctl --user restart procureai-backend` (runs are lost, see above) |
+| Backend wedged | `systemctl --user restart procureai-backend` (runs are reloaded from `RUN_STORE_DIR`, see above) |
 | nginx | `sudo nginx -t && sudo systemctl reload nginx` |
 
 `/health` (and the War Room header) confirm the active mode, route and judge after any change.

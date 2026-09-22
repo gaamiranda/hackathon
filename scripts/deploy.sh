@@ -2,7 +2,7 @@
 # Deploy ProcureAI to the Lightsail box (PLAN.md D12, T10c): `just deploy` from any checkout.
 #
 #   1. build the frontend locally with VITE_API_URL=/api (npm ci first if node_modules is missing)
-#   2. rsync the repo (no .git / node_modules / .venv / backend/out / .env) to /home/ubuntu/procureai
+#   2. rsync the repo (no .git / node_modules / .venv / backend/out / .env / data/runs) to /home/ubuntu/procureai
 #   3. on the box: uv + nginx if missing, `uv sync`, install the systemd USER unit and the nginx site
 #      from deploy/, copy frontend/dist to /var/www/procureai, sync the OpenClaw skills, restart the
 #      backend, reload nginx, curl /health
@@ -39,7 +39,8 @@ log "rsync → $HOST:$REMOTE_DIR"
 rsync -az --delete -e "ssh -i $KEY -o BatchMode=yes" \
   --exclude .git --exclude node_modules --exclude .venv --exclude backend/out --exclude '.env' \
   --exclude __pycache__ --exclude .pytest_cache --exclude 'Hackathon Planning Doc*' --exclude .DS_Store \
-  --filter 'protect backend/.env' \
+  --exclude data/runs \
+  --filter 'protect backend/.env' --filter 'protect data/runs' \
   "$ROOT/" "$HOST:$REMOTE_DIR/"
 
 # --- 3. remote ----------------------------------------------------------------------------------
