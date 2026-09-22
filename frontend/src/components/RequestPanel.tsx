@@ -43,7 +43,10 @@ export function RequestPanel({ run, onRun, quoteByDoc }: { run: Run; onRun: (r: 
   }
 
   const quoteFor = (docId: string): NormalizedQuote | undefined => {
-    // The Run holds no doc→quote mapping; it comes from quote.extracted events (payload.doc_id → quote_id).
+    // quote.doc_id is authoritative and survives a human renaming the quote (manual entry of the reference, T17);
+    // the quote.extracted events (payload.doc_id → quote_id) cover hand-written quotes without one.
+    const byDoc = run.quotes.find((q) => q.doc_id === docId)
+    if (byDoc) return byDoc
     const qid = quoteByDoc[docId]
     if (qid) return run.quotes.find((q) => q.quote_id === qid)
     const i = run.documents.findIndex((d) => d.doc_id === docId) // fallback: upload order

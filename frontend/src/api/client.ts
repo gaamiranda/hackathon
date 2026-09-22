@@ -1,4 +1,4 @@
-import type { CreateRunInput, Health, InterruptInput, NegotiationThread, PurchaseOrder, Run, RunOverview, RunSummary, WorkflowEvent } from './types'
+import type { Comparison, CreateRunInput, Health, InterruptInput, NegotiationThread, PurchaseOrder, Run, RunOverview, RunSummary, WorkflowEvent } from './types'
 
 export const API_URL: string = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:8000'
 
@@ -57,6 +57,9 @@ export const api = {
 
   /** Header strip figures (T16); refetched on the same triggers as getRun. */
   getOverview: (runId: string) => request<RunOverview>(`/runs/${runId}/summary`),
+
+  /** Manual comparison matrix (T17): engine figures per supplier; 409 not_validated before the engine has run. */
+  getComparison: (runId: string) => request<Comparison>(`/runs/${runId}/comparison`),
 
   uploadDocuments: (runId: string, files: File[]) => {
     const form = new FormData()

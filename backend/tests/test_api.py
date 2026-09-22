@@ -39,8 +39,11 @@ def create(client: TestClient) -> str:
 def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"mode": "mock", "llm_gateway": "unconfigured", "llm_backend": "gateway", "openclaw": "unconfigured",
-                        "openclaw_tasks": [], "guardrail_judge": "mock", "judge_model": None, "runs": 0, "runs_persisted": False}
+    body = r.json()
+    assert isinstance(body.pop("llm_routes"), dict)  # per-route last attempts: process-wide, other tests may have made calls
+    assert body == {"mode": "mock", "llm_gateway": "unconfigured", "llm_backend": "gateway", "openclaw": "unconfigured",
+                    "gateway": "unconfigured", "llm": "ok", "openclaw_tasks": [], "guardrail_judge": "mock",
+                    "judge_model": None, "runs": 0, "runs_persisted": False}
 
 
 def test_full_mismatch_flow_over_http(client):

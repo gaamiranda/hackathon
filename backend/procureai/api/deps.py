@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
     # fallbacks) never reach the journal. No-op when the root logger already has handlers.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     app.state.orchestrator = build_orchestrator()
+    app.state.health_probes = None  # created lazily by api.app.get_health_probes; reset per app start (T17)
     # Open SSE streams block uvicorn's graceful shutdown: it waits for every connection to close
     # before sending the lifespan shutdown event. So set the event from the exit signal itself
     # (chaining uvicorn's handler) and let the stream generators return on their own.

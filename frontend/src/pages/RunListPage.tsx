@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { API_URL, api, ApiError } from '../api/client'
-import type { CreateRunInput, Health, RunSummary } from '../api/types'
+import type { CreateRunInput, RunSummary } from '../api/types'
 import { Button, ErrorLine, Panel } from '../components/Panel'
 import { StateBadge } from '../components/StateBadge'
 import { isoDateInDays } from '../format'
+import { useHealth } from '../hooks/useHealth'
 
 /** PLAN.md §15: 2,000 × Product X within 14 days, budget 30,000 USD. */
 const DEMO_REQUEST = (): CreateRunInput => ({ product: 'Product X', quantity: 2000, required_by: isoDateInDays(14), budget: '30000.00', currency: 'USD' })
@@ -12,7 +13,7 @@ const DEMO_REQUEST = (): CreateRunInput => ({ product: 'Product X', quantity: 20
 export function RunListPage() {
   const navigate = useNavigate()
   const [runs, setRuns] = useState<RunSummary[] | null>(null)
-  const [health, setHealth] = useState<Health | null>(null)
+  const health = useHealth()
   const [error, setError] = useState<ApiError | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -24,7 +25,6 @@ export function RunListPage() {
       .listRuns()
       .then(setRuns)
       .catch((e: ApiError) => setError(e))
-    api.health().then(setHealth).catch(() => setHealth(null))
   }, [])
   useEffect(load, [load])
 
@@ -117,7 +117,7 @@ export function RunListPage() {
         title="New run"
         right={
           health && (
-            <span className="mono text-xs text-zinc-500" title={`LLM gateway ${health.llm_gateway}`}>
+            <span className="mono text-xs text-zinc-500" title={`LLM gateway ${health.llm_gateway} · llm ${health.llm}`}>
               {health.mode === 'mock' ? 'mock agents' : 'live agents'} · via {health.llm_backend}
               {health.llm_backend === 'openclaw' && <span className={health.openclaw === 'reachable' ? 'text-emerald-400' : 'text-red-400'}> ({health.openclaw})</span>} · judge{' '}
               {health.guardrail_judge === 'jev' ? 'Jev' : 'mock'}

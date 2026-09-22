@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { API_URL, api, ApiError } from '../api/client'
-import type { Health, Run, RunOverview, WorkflowEvent } from '../api/types'
+import type { Run, RunOverview, WorkflowEvent } from '../api/types'
 import { AgentLanes } from '../components/AgentLanes'
 import { DecisionPanel } from '../components/DecisionPanel'
 import { HumanGate } from '../components/HumanGate'
@@ -10,6 +10,7 @@ import { RequestPanel } from '../components/RequestPanel'
 import { SummaryStrip } from '../components/SummaryStrip'
 import { TimelinePanel, type TimelineFilter } from '../components/TimelinePanel'
 import { useEventStream } from '../hooks/useEventStream'
+import { useHealth } from '../hooks/useHealth'
 import type { LaneKey } from '../labels'
 
 /** Events after which the Run aggregate has changed in ways only GET /runs/{id} reveals. */
@@ -33,13 +34,10 @@ export function RunPage() {
   const [run, setRun] = useState<Run | null>(null)
   const [overview, setOverview] = useState<RunOverview | null>(null)
   const [error, setError] = useState<ApiError | null>(null)
-  const [health, setHealth] = useState<Health | null>(null)
+  const health = useHealth()
   const [filter, setFilter] = useState<TimelineFilter>('all')
   // A negotiation draft / PO preview can be set aside to reach the Request panel; the summary strip reopens it.
   const [gateMinimised, setGateMinimised] = useState<string | null>(null)
-  useEffect(() => {
-    api.health().then(setHealth).catch(() => setHealth(null))
-  }, [])
 
   const refetch = useCallback(() => {
     if (!id) return
@@ -107,7 +105,7 @@ export function RunPage() {
   const laneFilter: LaneKey | null = filter === 'all' || filter === 'moments' ? null : filter
 
   return (
-    <div className="flex h-[calc(100vh-49px)] flex-col">
+    <div className="flex h-full flex-col">
       <SummaryStrip runId={run.run_id} overview={overview} state={run.state} currency={run.request.currency} health={health} onOpenGate={() => setGateMinimised(null)} />
       {error && <div className="border-b border-red-900 bg-red-950/50 px-4 py-1 text-xs text-red-200">{error.message}</div>}
       <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)_380px] min-[1400px]:grid-cols-[350px_minmax(0,1fr)_400px] gap-3 p-3">

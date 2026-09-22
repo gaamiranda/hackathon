@@ -28,6 +28,7 @@ from typing import Any
 from uuid import uuid4
 
 from procureai.agents.base import CRITICAL_FIELDS, AgentSet
+from procureai.agents.document import load_aliases, resolve_supplier_id
 from procureai.domain.models import (
     Escalation,
     EventActor,
@@ -109,6 +110,16 @@ class _Replan:
     math_resolved: bool
 
 
+# Manual extraction (T17, G6): when no LLM route answered, the human types the whole quote in. Every NormalizedQuote
+# field a person may fill, critical ones first; identity/audit fields (doc_id, source, field_confidence, raw_excerpt,
+# negotiated_offer) are the system's. `text_excerpt` gives the form the document text without a second request.
+MANUAL_REASON = "llm_unavailable"
+MANUAL_FIELDS: tuple[str, ...] = CRITICAL_FIELDS + (
+    "supplier_name", "supplier_id", "quote_id", "payment_terms", "shipping_cost", "discount_pct",
+    "validity_date", "capacity_units", "llm_stated_total",
+)
+MANUAL_TEXT_CHARS = 2000
+
 # agent.failed summaries for the fallback reasons a live agent reports via last_fallback (T16).
 FALLBACK_SUMMARY: dict[str, dict[str, str]] = {
     "decision": {
@@ -144,6 +155,9 @@ class Orchestrator:
         self.new_id = id_factory or (lambda: f"run-{uuid4().hex[:8]}")
         self.supplier = supplier or ScriptedSupplier()
         self._replans: dict[str, _Replan] = {}
+        # run_id → doc_id → manual-extraction details gathered while a batch extracts (consumed by _check_extraction).
+        self._manual: dict[str, dict[str, dict[str, Any]]] = {}
+        self._aliases: dict[str, str] | None = None
 
     # ------------------------------------------------------------------ public API
 
@@ -187,6 +201,7 @@ class Orchestrator:
             if run.pending_human:
                 run.pending_human.details.get("failed_documents", {}).pop(doc_id, None)
                 run.pending_human.details.get("fields", {}).pop(old_quote_id, None)
+                run.pending_human.details.get("manual", {}).pop(doc_id, None)
                 if old_quote_id in run.pending_human.quote_ids:
                     run.pending_human.quote_ids.remove(old_quote_id)
             run.documents.append(doc)
@@ -197,7 +212,9 @@ class Orchestrator:
             return self._save(run)
 
     def correct_quote(self, run_id: str, quote_id: str, patch: dict[str, Any]) -> Run:
-        """Human fills/overrides fields; their confidence becomes 1.0. Resumes when nothing is pending."""
+        """Human fills/overrides fields; their confidence becomes 1.0. Resumes when nothing is pending.
+        A whole quote may arrive in one patch (manual mode, T17); a supplier_name without a supplier_id is mapped
+        through the alias table the Document Agent uses, so a typed-in "Borealis Manufacturing AS" finds its history."""
         with self.store.lock:
             run = self.store.get(run_id)
             self._require(run, {S.NEEDS_HUMAN_EXTRACTION}, "correct_quote")
@@ -206,6 +223,8 @@ class Orchestrator:
             unknown = set(patch) - set(NormalizedQuote.model_fields)
             if unknown:
                 raise WorkflowError("bad_patch", f"unknown NormalizedQuote fields: {sorted(unknown)}")
+            if "supplier_name" in patch and "supplier_id" not in patch:
+                patch = {**patch, "supplier_id": resolve_supplier_id(str(patch["supplier_name"]), self._supplier_aliases())}
             confidences = {**old.field_confidence, **{k: 1.0 for k in patch}}
             # re-validate: patches arrive as raw JSON values from the human form
             run.quotes[idx] = NormalizedQuote.model_validate({**old.model_dump(), **patch, "field_confidence": confidences})
@@ -729,6 +748,11 @@ class Orchestrator:
                 profiles[sid] = profile
         return profiles
 
+    def _supplier_aliases(self) -> dict[str, str]:
+        if self._aliases is None:
+            self._aliases = load_aliases()
+        return self._aliases
+
     def _quote_for_supplier(self, run: Run, supplier_id: str) -> NormalizedQuote:
         for q in run.quotes:
             if q.supplier_id == supplier_id:
@@ -746,8 +770,14 @@ class Orchestrator:
             reason = "llm_unavailable" if isinstance(exc, LLMUnavailable) else "error"
             self._emit(run, EventActor.AGENT, "agent.failed", f"Document agent failed on {doc.filename}: {exc}",
                        {"agent": agent, "doc_id": doc.doc_id, "error": str(exc), "reason": reason, "detail": str(exc)})
-            self._set_pending_extraction(run, {}, failed={doc.doc_id: str(exc)})
+            self._set_pending_extraction(run, {}, failed={doc.doc_id: str(exc)}, manual=self._pending_manual(run))
             return
+        fallback = getattr(self.agents["document"], "last_fallback", None)
+        if fallback and fallback.get("reason") == MANUAL_REASON:  # T17: the human types this quote in
+            self._manual.setdefault(run.run_id, {})[doc.doc_id] = {
+                "reason": MANUAL_REASON, "filename": doc.filename, "detail": fallback.get("detail", ""),
+                "text_excerpt": doc.text[:MANUAL_TEXT_CHARS],
+            }
         self._agent_finished(run, agent, f"Extracted {quote.supplier_name}: {quote.quantity_quoted} × {quote.unit_price} {quote.currency}",
                              {"doc_id": doc.doc_id, "quote_id": quote.quote_id})
         self._judge_injection(run, doc.text, {"doc_id": doc.doc_id, "quote_id": quote.quote_id, "source": "document"})
@@ -828,23 +858,48 @@ class Orchestrator:
         return [f for f in CRITICAL_FIELDS if quote.field_confidence.get(f, 0.0) < threshold]
 
     def _check_extraction(self, run: Run) -> bool:
-        """True if every quote is clean; otherwise sets NEEDS_HUMAN_EXTRACTION."""
+        """True if every quote is clean; otherwise sets NEEDS_HUMAN_EXTRACTION.
+
+        A quote the LLM never saw (manual, T17) stays manual — with every fillable field listed, critical first —
+        until its critical fields are confirmed; then it is a normal clean quote."""
         low = {q.quote_id: fields for q in run.quotes if (fields := self._low_confidence_fields(run, q))}
         failed = run.pending_human.details.get("failed_documents", {}) if run.pending_human else {}
+        by_doc = {q.doc_id: q for q in run.quotes if q.doc_id}
+        manual = {
+            doc_id: {**info, "quote_id": by_doc[doc_id].quote_id}
+            for doc_id, info in self._pending_manual(run).items()
+            if doc_id in by_doc and by_doc[doc_id].quote_id in low
+        }
+        for info in manual.values():
+            low[info["quote_id"]] = list(MANUAL_FIELDS)
         if not low and not failed:
             run.pending_human = None
             return True
-        self._set_pending_extraction(run, low, failed)
+        self._set_pending_extraction(run, low, failed, manual)
         return False
 
-    def _set_pending_extraction(self, run: Run, low: dict[str, list[str]], failed: dict[str, str]) -> None:
+    def _pending_manual(self, run: Run) -> dict[str, dict[str, Any]]:
+        """Manual-extraction details by doc_id: what the previous pending gate held plus this batch's (T17)."""
+        prev = run.pending_human.details.get("manual", {}) if run.pending_human else {}
+        return {**prev, **self._manual.pop(run.run_id, {})}
+
+    def _set_pending_extraction(self, run: Run, low: dict[str, list[str]], failed: dict[str, str],
+                                manual: dict[str, dict[str, Any]] | None = None) -> None:
         prev = run.pending_human
         merged_failed = {**(prev.details.get("failed_documents", {}) if prev else {}), **failed}
+        manual = manual or {}
+        if manual:
+            message = f"AI unavailable: enter {len(manual)} quote(s) by hand from the document text"
+        else:
+            message = "Confirm low-confidence critical fields"
+        details: dict[str, Any] = {"fields": low, "failed_documents": merged_failed, "manual": manual}
+        if manual:
+            details["reason"] = MANUAL_REASON
         run.pending_human = PendingHuman(
             kind=PendingHumanKind.EXTRACTION,
             quote_ids=sorted(low),
-            message="Confirm low-confidence critical fields" + (" and re-upload failed documents" if merged_failed else ""),
-            details={"fields": low, "failed_documents": merged_failed},
+            message=message + (" and re-upload failed documents" if merged_failed else ""),
+            details=details,
         )
         if run.state != S.NEEDS_HUMAN_EXTRACTION:
             self._transition(run, S.NEEDS_HUMAN_EXTRACTION, EventActor.ENGINE, "extraction.needs_human",

@@ -18,12 +18,15 @@ from procureai.config.settings import get_settings
 from procureai.domain.models import (
     Currency,
     Money,
+    NegotiationOffer,
     NegotiationThread,
     ProcurementConfig,
     ProcurementRequest,
     PurchaseOrder,
+    QuoteChecks,
     RawDocument,
     Run,
+    ScoringWeights,
     WorkflowEvent,
 )
 from procureai.po import render_po_pdf
@@ -87,6 +90,55 @@ class RunOverview(BaseModel):
     pending_human_kind: str | None
     po_number: str | None
     counts: RunCounts
+
+
+class ComparisonRow(BaseModel):
+    """One supplier column of the manual comparison matrix (T17, G6): engine outputs only, never LLM text.
+    Scores are null before SCORING; history rates are null when the supplier has no profile."""
+
+    supplier_id: str
+    supplier_name: str
+    quote_id: str
+    unit_price: Money
+    currency: str
+    quantity_quoted: int
+    moq: int
+    lead_time_days: int
+    shipping_cost: Money
+    discount_pct: str
+    payment_terms: str | None
+    capacity_units: int | None
+    subtotal: Money
+    discount: Money
+    pre_tax_total: Money
+    tax: Money
+    landed_cost: Money
+    checks: QuoteChecks
+    issues: list[str]
+    negotiated_offer: NegotiationOffer | None
+    negotiated: bool
+    eligible: bool | None
+    ineligibility_reasons: list[str]
+    total_score: float | None
+    score_breakdown: dict[str, float] | None
+    on_time_rate: float | None
+    defect_rate: float | None
+
+
+class Comparison(BaseModel):
+    """GET /runs/{id}/comparison: the flat matrix the Compare tab renders with the LLM down. Rows follow the
+    scorecard ranking once scored, validation order before."""
+
+    run_id: str
+    state: str
+    request_version: int
+    quantity: int
+    budget: Money
+    currency: str
+    required_by: date
+    weights: ScoringWeights
+    recommended_supplier_id: str | None
+    quotes: list[ComparisonRow]
 
 
 class EmailDocumentBody(BaseModel):
@@ -226,6 +278,46 @@ def get_run_overview(run_id: str, orch: Orchestrator = Depends(get_orchestrator)
             events=len(orch.store.events(run.run_id)),
             negotiations=len(run.negotiations),
         ),
+    )
+
+
+@router.get("/{run_id}/comparison", response_model=Comparison)
+def get_comparison(run_id: str, orch: Orchestrator = Depends(get_orchestrator)) -> Comparison:
+    """Manual comparison data (T17, G6): every figure the engine validated and scored, per supplier, with nothing
+    computed here and no LLM text. 409 not_validated until the engine has run (VALIDATING onward)."""
+    run = orch.store.get(run_id)
+    if not run.validated:
+        raise WorkflowError("not_validated", f"run {run_id!r} has no validated quotes yet; upload documents and evaluate first")
+    cards = {c.supplier_id: c for c in run.scorecards}
+    order = [c.supplier_id for c in run.scorecards] or [v.supplier_id for v in run.validated]
+    by_supplier = {v.supplier_id: v for v in run.validated}
+    rows: list[ComparisonRow] = []
+    for sid in order:
+        v = by_supplier.get(sid)
+        if v is None:
+            continue
+        card = cards.get(sid)
+        profile = orch.agents["supplier_intel"].get_profile(sid)  # history lookup, never an LLM
+        rows.append(ComparisonRow(
+            supplier_id=sid, supplier_name=v.supplier_name, quote_id=v.quote_id,
+            unit_price=v.unit_price, currency=v.currency, quantity_quoted=v.quantity_quoted, moq=v.moq,
+            lead_time_days=v.lead_time_days, shipping_cost=v.shipping_cost, discount_pct=str(v.discount_pct),
+            payment_terms=v.payment_terms, capacity_units=v.capacity_units,
+            subtotal=v.subtotal, discount=v.discount, pre_tax_total=v.pre_tax_total, tax=v.tax, landed_cost=v.landed_cost,
+            checks=v.checks, issues=v.issues, negotiated_offer=v.negotiated_offer, negotiated=v.negotiated,
+            eligible=card.eligible if card else None,
+            ineligibility_reasons=card.ineligibility_reasons if card else [],
+            total_score=card.total_score if card else None,
+            score_breakdown=card.score_breakdown if card else None,
+            on_time_rate=profile.on_time_rate if profile else None,
+            defect_rate=profile.defect_rate if profile else None,
+        ))
+    return Comparison(
+        run_id=run.run_id, state=run.state, request_version=run.request.version,
+        quantity=run.request.quantity, budget=run.request.budget, currency=run.request.currency,
+        required_by=run.request.required_by, weights=run.config.weights,
+        recommended_supplier_id=run.recommendation.recommended_supplier_id if run.recommendation else None,
+        quotes=rows,
     )
 
 

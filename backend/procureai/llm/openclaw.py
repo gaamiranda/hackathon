@@ -18,6 +18,7 @@ import httpx
 from procureai.config.settings import Settings
 from procureai.llm.base import LLMResult, LLMRequestTooLarge, LLMUnavailable
 from procureai.llm.common import complete_with_repair
+from procureai.llm.status import TRACKER, RouteTracker
 
 BACKEND = "openclaw"
 
@@ -25,8 +26,9 @@ BACKEND = "openclaw"
 class OpenClawLLMClient:
     """Sync httpx client for the OpenClaw gateway. One instance per process; safe to share."""
 
-    def __init__(self, settings: Settings, *, client: httpx.Client | None = None) -> None:
+    def __init__(self, settings: Settings, *, client: httpx.Client | None = None, tracker: RouteTracker = TRACKER) -> None:
         self.settings = settings
+        self.tracker = tracker  # last-attempt bookkeeping for /health (T17); never makes a call of its own
         self._client = client or httpx.Client(
             base_url=settings.OPENCLAW_URL.rstrip("/"),
             timeout=settings.OPENCLAW_TIMEOUT_S,
@@ -62,6 +64,15 @@ class OpenClawLLMClient:
         return _assistant_text(payload), payload
 
     def _post(self, encoded: bytes) -> dict[str, Any]:
+        try:
+            payload = self._post_once(encoded)
+        except LLMUnavailable as exc:
+            self.tracker.record(BACKEND, False, str(exc))
+            raise
+        self.tracker.record(BACKEND, True)
+        return payload
+
+    def _post_once(self, encoded: bytes) -> dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.settings.OPENCLAW_TOKEN}",
             "Content-Type": "application/json",

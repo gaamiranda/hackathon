@@ -16,7 +16,9 @@ import httpx
 from procureai.config.settings import Settings
 from procureai.llm.base import LLMResult, LLMRequestTooLarge, LLMUnavailable
 from procureai.llm.common import JSON_INSTRUCTION, complete_with_repair, extract_json  # noqa: F401  (re-exported)
+from procureai.llm.status import TRACKER, RouteTracker
 
+BACKEND = "gateway"
 RETRY_STATUSES = frozenset({403, 429})
 RETRY_DELAYS_S = (2.0, 4.0)  # 3 attempts total
 
@@ -31,9 +33,11 @@ class GatewayLLMClient:
         client: httpx.Client | None = None,
         sleep=time.sleep,
         model: str | None = None,
+        tracker: RouteTracker = TRACKER,
     ) -> None:
         self.settings = settings
         self.sleep = sleep
+        self.tracker = tracker  # last-attempt bookkeeping for /health (T17); never makes a call of its own
         self._model = model  # None → settings.LLM_MODEL; set for the LLM_MODEL_FAST client (D18)
         self._client = client or httpx.Client(
             base_url=settings.LLM_GATEWAY_URL.rstrip("/"),
@@ -54,7 +58,7 @@ class GatewayLLMClient:
         max_tokens: int = 1024,
         json_mode: bool = False,
     ) -> LLMResult:
-        return complete_with_repair(self._chat, system, user, max_tokens=max_tokens, json_mode=json_mode, backend="gateway")
+        return complete_with_repair(self._chat, system, user, max_tokens=max_tokens, json_mode=json_mode, backend=BACKEND)
 
     def _chat(self, system: str, user: str, max_tokens: int) -> tuple[str, dict[str, Any]]:
         body = {
@@ -70,6 +74,15 @@ class GatewayLLMClient:
         return _assistant_text(payload), payload
 
     def _post(self, encoded: bytes) -> dict[str, Any]:
+        try:
+            payload = self._post_with_retries(encoded)
+        except LLMUnavailable as exc:
+            self.tracker.record(BACKEND, False, str(exc))
+            raise
+        self.tracker.record(BACKEND, True)
+        return payload
+
+    def _post_with_retries(self, encoded: bytes) -> dict[str, Any]:
         headers = {
             "Authorization": f"Bearer {self.settings.LLM_GATEWAY_API_KEY}",
             "Content-Type": "application/json",
@@ -94,3 +107,17 @@ class GatewayLLMClient:
 
 def _assistant_text(payload: dict[str, Any]) -> str:
     return (payload.get("message") or {}).get("content", "") or ""
+
+
+def probe_gateway(settings: Settings, *, timeout_s: float = 2.0) -> str:
+    """"reachable" | "unreachable": GET {LLM_GATEWAY_URL}/api/tags (~25 ms, free — docs/INFRA.md). Never raises."""
+    try:
+        response = httpx.get(
+            f"{settings.LLM_GATEWAY_URL.rstrip('/')}/api/tags",
+            headers={"Authorization": f"Bearer {settings.LLM_GATEWAY_API_KEY}"},
+            timeout=timeout_s,
+            follow_redirects=True,
+        )
+    except httpx.HTTPError:
+        return "unreachable"
+    return "reachable" if response.status_code == 200 else "unreachable"

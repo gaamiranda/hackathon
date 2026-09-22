@@ -92,6 +92,40 @@ Kill the backend while the page is open: the stream indicator turns red ("discon
 keeps working; the client reconnects with `since=<last seq>` every 2 s. (The Week 1 store is in-memory, so after
 a restart the run is gone and the indicator says so.)
 
+## Manual mode — the AI dies on stage (T17, PLAN.md G6)
+
+The War Room degrades visibly instead of breaking. `/health` reports `llm: ok | degraded | down` (polled every 15 s
+on both pages) and the banner under the header follows it: amber **AI route degraded: using fallback gateway** when
+OpenClaw failed but the direct gateway answers, red **AI unavailable — manual mode** when no route answers. Every
+number on screen is the deterministic engine's either way; only extraction and the prose need a human.
+
+Rehearsal next to the normal stack (`just run` on :8000/:5173 can keep running):
+
+```sh
+just demo-manual                                                         # backend on :8001, MODE=live, both LLM routes → closed port
+cd frontend && VITE_API_URL=http://localhost:8001 npm run dev -- --port 5174 --strictPort
+```
+
+1. Open `http://localhost:5174/`: the red banner is already up (both probes fail). **Create the demo run**.
+2. Drop the three files from `data/synthetic/`. Each extraction fails over OpenClaw → gateway (the gateway client
+   retries twice, ~6 s per document), the Document lane shows `agent.failed` "LLM gateway unavailable; routing the
+   document to human extraction", and the state becomes **NEEDS_HUMAN_EXTRACTION** with the **Manual extraction**
+   dialog: one block per document, the document text read-only on the left, every quote field on the right
+   (critical ones marked `*`, currency prefilled USD, `supplier_id` derived from the name if left empty).
+3. Type the values from `data/synthetic/<file>.expected.json` — Apex: 11.20 USD, MOQ 500, 13 d, 2000, "Apex Components
+   Ltd", APX-Q-26091, Net 30, shipping 400.00, capacity 20000, printed total 22040.00; Borealis: 12.80, MOQ 1000, 10 d,
+   2000, "Borealis Manufacturing AS", BOR-2026-0418, Net 45, shipping 250.00, discount 2, capacity 4000, total 25338.00;
+   Cobalt: 13.40, MOQ 1000, 9 d, 2000, "Cobalt Industrial", CI-Q-7731, "50% upfront, 50% on delivery", capacity 10000,
+   total 26800.00 — and **Save quote** each. Saving the last one resumes the run on its own (no Evaluate click).
+4. As in normal mode the engine stops at **CALC_MISMATCH** on Apex's printed total; **Use computed total**. The Decision
+   Agent's call fails too (`agent.failed` on the Decision lane, `templated` chip on `agent.finished`) and the run ends in
+   **RECOMMENDED** with **Borealis Manufacturing AS 72.3 / 27,618.42**, Cobalt 62.9, Apex 58.6 — the same numbers as
+   step 4 of the normal path — with the deterministic rationale.
+5. Click **Compare** in the Decision panel: the matrix from `GET /runs/{id}/comparison` (suppliers as columns; quote
+   figures, engine costing, ✓/✗ checks with the issues as tooltips, supplier history, score breakdown; best value per
+   row in green, negotiated values tagged `neg.`, ineligible columns dimmed). It contains no AI text and is available
+   from validation onward (409 before), in every mode.
+
 ## Source of truth for types
 
 `src/api/types.ts` is hand-written from `backend/procureai/domain/schema/*.json`. When a schema changes,
@@ -101,10 +135,11 @@ update the TS type by hand (no codegen step yet). Money fields are strings ("12.
 
 ```
 src/
-  api/client.ts         typed fetch wrappers for every backend route (incl. interrupt, request/approve/reject PO, poPdfUrl) + SSE URL;
+  api/client.ts         typed fetch wrappers for every backend route (incl. interrupt, request/approve/reject PO, poPdfUrl, comparison) + SSE URL;
                         ApiError.violations on 422 policy_violation
   api/types.ts          Run, WorkflowEvent, Scorecard, Recommendation, PendingHuman, NormalizedQuote, NegotiationThread, PurchaseOrder, …
   hooks/useEventStream  EventSource with replay-on-connect and reconnect(since=last seq)
+  hooks/useHealth       /health polled every 15 s from App; HealthContext for the pages (llm: ok | degraded | down)
   pages/RunListPage     GET /runs + POST /runs form
   pages/RunPage         3-column layout, run state + version badge, refetch rules (recommendation.ready, *.needs_human,
                         calc.mismatch, extraction.completed, negotiation.awaiting_approval, negotiation.closed,
@@ -114,6 +149,8 @@ src/
                         po.requested / po.generated (green, PO number) / po.rejected / po.discarded),
                         DecisionPanel (PO card + PDF link, Replan impact card, ranking, Request purchase order, Start negotiation,
                         per-supplier threads, What changed),
-                        HumanGate (extraction, calc_mismatch, negotiation_approval and po_approval with "set aside"), StateBadge, Panel
+                        ComparisonTable (Compare tab: engine-only matrix, no AI text), LlmBanner (amber degraded / red manual mode),
+                        HumanGate (extraction incl. the manual full-quote form when details.reason = llm_unavailable, calc_mismatch,
+                        negotiation_approval and po_approval with "set aside"), StateBadge, Panel
   format.ts             money(string) formatting without float parsing
 ```

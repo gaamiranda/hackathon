@@ -2,8 +2,8 @@
 
 Extraction only: the model reads the document and reports what it says. Totals, eligibility and
 ranking are the engine's job (G1), and instructions found inside the document are ignored (G4).
-A document the model cannot read comes back as a zero-confidence quote, which routes the run to
-NEEDS_HUMAN_EXTRACTION instead of failing it (G6).
+A document the model cannot read — or cannot be sent because no LLM route answers (T17) — comes back
+as a zero-confidence quote, which routes the run to NEEDS_HUMAN_EXTRACTION instead of failing it (G6).
 """
 
 import json
@@ -18,7 +18,7 @@ from pydantic import ValidationError
 from procureai.agents.base import CRITICAL_FIELDS
 from procureai.agents.prompts.document import EXPECTED_KEYS, SYSTEM, build_user_message
 from procureai.domain.models import NormalizedQuote, RawDocument
-from procureai.llm.base import LLMClient
+from procureai.llm.base import LLMClient, LLMUnavailable
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,13 @@ def slugify(name: str) -> str:
 
 def load_aliases(path: Path = SUPPLIER_ALIASES) -> dict[str, str]:
     return json.loads(path.read_text())["aliases"]
+
+
+def resolve_supplier_id(supplier_name: str, aliases: dict[str, str]) -> str:
+    """Alias table first, slug otherwise. An unmapped supplier has no profile and so is ineligible (D13) —
+    better than guessing which known supplier was meant. Shared with the manual extraction form (T17)."""
+    slug = slugify(supplier_name)
+    return aliases.get(slug, slug or "unknown")
 
 
 class LiveDocumentAgent:
@@ -69,9 +76,15 @@ class LiveDocumentAgent:
             text = text[: self.max_text_chars]
 
         self.last_fallback = None
-        result = self.llm.complete(
-            TASK, SYSTEM, build_user_message(text), max_tokens=MAX_TOKENS, json_mode=True
-        )
+        try:
+            result = self.llm.complete(
+                TASK, SYSTEM, build_user_message(text), max_tokens=MAX_TOKENS, json_mode=True
+            )
+        except LLMUnavailable as exc:  # T17: no route answers → the human types the quote in (manual mode)
+            log.warning("%s: LLM unavailable (%s); escalating to manual extraction", doc.filename, exc)
+            self.last_backend = None
+            self.last_fallback = {"reason": "llm_unavailable", "detail": f"{doc.filename}: {exc}"}
+            return self._unreadable(doc, text)
         self.last_backend = result.backend
         if result.parsed_json is None:
             log.warning("%s: model returned no JSON; escalating to human extraction", doc.filename)
@@ -115,10 +128,7 @@ class LiveDocumentAgent:
         )
 
     def supplier_id_for(self, supplier_name: str) -> str:
-        """Alias table first, slug otherwise. An unmapped supplier has no profile and so is
-        ineligible (D13) — better than guessing which known supplier was meant."""
-        slug = slugify(supplier_name)
-        return self.aliases.get(slug, slug or "unknown")
+        return resolve_supplier_id(supplier_name, self.aliases)
 
     def _unreadable(self, doc: RawDocument, text: str) -> NormalizedQuote:
         """Valid-but-empty quote with zero confidence on every critical field, so the orchestrator

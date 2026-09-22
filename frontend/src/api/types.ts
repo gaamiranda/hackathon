@@ -218,12 +218,33 @@ export interface PoApprovalDetail {
   request_version: number
 }
 
+/** One document the LLM never saw (T17, G6): the human types the whole quote in from `text_excerpt`. */
+export interface ManualExtractionDetail {
+  reason: 'llm_unavailable'
+  quote_id: string
+  filename: string
+  detail: string
+  /** First 2,000 chars of the document text (run.documents[].text holds all of it). */
+  text_excerpt: string
+}
+
+/** pending_human.details for kind "extraction". `fields[quote_id]` lists what the human may fill: the low-confidence
+ *  critical fields, or — for a manual quote — every fillable NormalizedQuote field, critical first. */
+export interface ExtractionDetail {
+  fields: Record<string, string[]>
+  failed_documents: Record<string, string>
+  /** doc_id → manual details; empty in the ordinary low-confidence case. */
+  manual?: Record<string, ManualExtractionDetail>
+  /** "llm_unavailable" when at least one quote is manual. */
+  reason?: 'llm_unavailable'
+}
+
 export interface PendingHuman {
   kind: PendingHumanKind
   quote_ids: string[]
   message: string
   /** calc_mismatch:         { [quote_id]: CalcMismatchDetail }
-   *  extraction:            { fields: { [quote_id]: string[] }, failed_documents: { [doc_id]: string } }
+   *  extraction:            ExtractionDetail
    *  negotiation_approval:  NegotiationApprovalDetail
    *  po_approval:           PoApprovalDetail */
   details: Record<string, unknown>
@@ -349,6 +370,15 @@ export interface InterruptInput {
   reason?: string
 }
 
+export type LlmStatus = 'ok' | 'degraded' | 'down'
+
+/** Outcome of a route's last real call, recorded by the LLM clients (T17). */
+export interface RouteAttempt {
+  ok: boolean
+  at: string
+  error: string | null
+}
+
 export interface Health {
   mode: 'mock' | 'live'
   llm_gateway: string
@@ -356,8 +386,60 @@ export interface Health {
   llm_backend: 'gateway' | 'openclaw'
   /** unconfigured | configured (token present, gateway route) | reachable | unreachable (2 s probe when OpenClaw is the route). */
   openclaw: string
+  /** unconfigured | reachable | unreachable (free GET /api/tags probe, live mode only; cached 10 s). */
+  gateway: string
+  /** ok | degraded (OpenClaw failed, direct gateway answers) | down (no route answers → manual mode, G6). Always ok in mock mode. */
+  llm: LlmStatus
+  llm_routes: Partial<Record<'openclaw' | 'gateway', RouteAttempt>>
   /** Guardrail judge (D20, T14): deterministic mock or TypeSafe Jev (replayed from cache when recorded). */
   guardrail_judge: 'mock' | 'jev'
   judge_model: string | null
   runs: number
+}
+
+/** GET /runs/{id}/comparison (T17, G6): one column per supplier, engine outputs only — usable with the LLM down. */
+export interface ComparisonRow {
+  supplier_id: string
+  supplier_name: string
+  quote_id: string
+  unit_price: Money
+  currency: string
+  quantity_quoted: number
+  moq: number
+  lead_time_days: number
+  shipping_cost: Money
+  discount_pct: string
+  payment_terms: string | null
+  capacity_units: number | null
+  subtotal: Money
+  discount: Money
+  pre_tax_total: Money
+  tax: Money
+  landed_cost: Money
+  checks: QuoteChecks
+  issues: string[]
+  negotiated_offer: NegotiationOffer | null
+  negotiated: boolean
+  /** null before scoring */
+  eligible: boolean | null
+  ineligibility_reasons: string[]
+  total_score: number | null
+  score_breakdown: Record<string, number> | null
+  /** null when the supplier has no history profile */
+  on_time_rate: number | null
+  defect_rate: number | null
+}
+
+export interface Comparison {
+  run_id: string
+  state: WorkflowState
+  request_version: number
+  quantity: number
+  budget: Money
+  currency: string
+  required_by: string
+  weights: ScoringWeights
+  recommended_supplier_id: string | null
+  /** Ranked order once scored, validation order before. */
+  quotes: ComparisonRow[]
 }

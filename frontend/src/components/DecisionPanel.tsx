@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { api, ApiError } from '../api/client'
 import type { NegotiationOffer, NegotiationStatus, NegotiationThread, NegotiationTurn, PurchaseOrder, ReplanImpact, Run, Scorecard, ScoringWeights, WorkflowEvent } from '../api/types'
 import { money, time } from '../format'
+import { ComparisonTable } from './ComparisonTable'
 import { Button, ErrorLine, Panel } from './Panel'
 
 const STATUS: Record<NegotiationStatus, string> = {
@@ -19,6 +20,8 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
   const threads = Object.values(run.negotiations)
   const [busy, setBusy] = useState<'negotiate' | 'request-po' | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Decision = ranking, rationale and actions; Compare = the engine-only matrix (T17), usable with the LLM down.
+  const [tab, setTab] = useState<'decision' | 'compare'>('decision')
   const generated = run.state === 'PO_GENERATED'
   const topCard = rec?.recommended_supplier_id ? run.scorecards.find((c) => c.supplier_id === rec.recommended_supplier_id) : undefined
   const canRequestPo = run.state === 'RECOMMENDED' && !!topCard?.eligible && run.config.approvals.po_generation
@@ -42,8 +45,31 @@ export function DecisionPanel({ run, onRun, events }: { run: Run; onRun: (r: Run
     }
   }
 
+  const tabs = (
+    <div className="flex gap-1 text-[11px]">
+      {(['decision', 'compare'] as const).map((t) => (
+        <button
+          key={t}
+          type="button"
+          onClick={() => setTab(t)}
+          className={`rounded px-2 py-0.5 font-medium uppercase tracking-wider transition-colors ${tab === t ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
+          title={t === 'compare' ? 'every validated figure side by side — engine numbers only, no AI text' : 'ranking, rationale and actions'}
+        >
+          {t}
+        </button>
+      ))}
+    </div>
+  )
+  if (tab === 'compare') {
+    return (
+      <Panel title="Decision" right={tabs}>
+        <ComparisonTable runId={run.run_id} updatedAt={run.updated_at} />
+      </Panel>
+    )
+  }
+
   return (
-    <Panel title="Decision">
+    <Panel title="Decision" right={tabs}>
       {run.replan_impact && <ReplanBanner impact={run.replan_impact} names={names} />}
       {generated && run.purchase_order && <PurchaseOrderCard po={run.purchase_order} runId={run.run_id} />}
       {run.replan_impact && <ReplanImpactCard impact={run.replan_impact} names={names} explanation={rec?.change_explanation ?? null} />}

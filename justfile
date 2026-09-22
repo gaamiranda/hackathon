@@ -34,6 +34,15 @@ test:
     cd backend && uv run pytest
     cd frontend && npm run build
 
+# Pair it with a second frontend: cd frontend && VITE_API_URL=http://localhost:8001 npm run dev -- --port 5174 --strictPort
+# (frontend/README.md "Manual mode"). Every LLM route points at a closed port, so each document goes to the manual form.
+# Fail-safe rehearsal (T17, G6): backend on :8001 in MODE=live with the AI unreachable, next to the normal `just run`
+demo-manual:
+    cd backend && MODE=live LLM_BACKEND=openclaw OPENCLAW_URL=http://127.0.0.1:9 OPENCLAW_TOKEN=closed-port \
+      LLM_GATEWAY_URL=http://127.0.0.1:9 LLM_GATEWAY_API_KEY=closed-port LLM_CACHE_MODE=record \
+      GUARDRAIL_JUDGE=mock RUN_STORE_DIR="" CORS_ORIGINS='["http://localhost:5173","http://localhost:5174"]' \
+      uv run uvicorn procureai.api.app:app --port 8001
+
 # Regenerate JSON schemas and synthetic quotes
 regen:
     cd backend && uv run python scripts/export_schemas.py

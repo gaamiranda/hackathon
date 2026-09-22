@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, ApiError } from '../api/client'
-import type { CalcMismatchDetail, NegotiationApprovalDetail, PoApprovalDetail, Run } from '../api/types'
+import type { CalcMismatchDetail, ExtractionDetail, ManualExtractionDetail, NegotiationApprovalDetail, PoApprovalDetail, Run } from '../api/types'
 import { money } from '../format'
 import { gateLabel } from '../labels'
 import { TotalsTable } from './DecisionPanel'
@@ -51,12 +51,13 @@ export function HumanGate({
   } else if (pending.kind === 'po_approval') {
     body = <PoGate key={draftKey} run={run} onRun={onRun} detail={pending.details as unknown as PoApprovalDetail} />
   } else body = <ExtractionGate run={run} onRun={onRun} />
+  const manual = pending.kind === 'extraction' && (pending.details as unknown as ExtractionDetail).reason === 'llm_unavailable'
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/70 p-6">
-      <div className="w-full max-w-2xl rounded-lg border border-amber-700 bg-zinc-900 p-5 shadow-2xl">
+      <div className={`max-h-[92vh] w-full overflow-y-auto rounded-lg border bg-zinc-900 p-5 shadow-2xl ${manual ? 'max-w-6xl border-red-700' : 'max-w-2xl border-amber-700'}`}>
         <div className="mb-1 flex items-baseline justify-between">
-          <span className="text-xs font-semibold uppercase tracking-widest text-amber-400" title={`pending_human.kind = ${pending.kind}`}>
-            Human review required · {gateLabel(pending.kind)}
+          <span className={`text-xs font-semibold uppercase tracking-widest ${manual ? 'text-red-400' : 'text-amber-400'}`} title={`pending_human.kind = ${pending.kind}`}>
+            Human review required · {manual ? 'Manual extraction' : gateLabel(pending.kind)}
           </span>
           {draftKey && (
             <button type="button" onClick={() => setMinimised(draftKey)} className="text-xs text-zinc-500 hover:text-zinc-300" title="set aside (e.g. to inject a requirement change); it stays pending">
@@ -130,9 +131,11 @@ function MismatchGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
 
 function ExtractionGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
   const { busy, error, act } = useAction(onRun)
-  const details = run.pending_human!.details as { fields?: Record<string, string[]>; failed_documents?: Record<string, string> }
+  const details = run.pending_human!.details as unknown as ExtractionDetail
   const fields = details.fields ?? {}
   const failed = details.failed_documents ?? {}
+  // doc_id → manual details (LLM unavailable, T17) re-keyed by quote so each quote picks its form
+  const manualByQuote = Object.fromEntries(Object.entries(details.manual ?? {}).map(([docId, m]) => [m.quote_id, { docId, ...m }]))
   const [values, setValues] = useState<Record<string, Record<string, string>>>(() =>
     Object.fromEntries(
       Object.entries(fields).map(([qid, names]) => {
@@ -146,6 +149,22 @@ function ExtractionGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
     <div className="space-y-3">
       {Object.entries(fields).map(([qid, names]) => {
         const q = run.quotes.find((x) => x.quote_id === qid)
+        const manual = manualByQuote[qid]
+        if (manual) {
+          const doc = run.documents.find((d) => d.doc_id === manual.docId)
+          return (
+            <ManualQuoteForm
+              key={qid}
+              quoteId={qid}
+              fields={names}
+              quote={q}
+              text={doc?.text ?? manual.text_excerpt}
+              detail={manual}
+              busy={busy}
+              onSubmit={(patch) => act(() => api.correctQuote(run.run_id, qid, patch))}
+            />
+          )
+        }
         return (
           <div key={qid} className="rounded border border-zinc-700 bg-zinc-950/60 p-3 text-sm">
             <div className="mb-2 flex items-baseline justify-between">
@@ -198,6 +217,138 @@ function ExtractionGate({ run, onRun }: { run: Run; onRun: (r: Run) => void }) {
       <ErrorLine error={error} />
     </div>
   )
+}
+
+type FieldKind = 'money' | 'int' | 'pct' | 'text' | 'currency' | 'date'
+
+/** How each fillable NormalizedQuote field is typed in (manual mode, T17). The order shown is the backend's: critical first. */
+const FIELD_SPEC: Record<string, { label: string; kind: FieldKind; placeholder?: string }> = {
+  unit_price: { label: 'Unit price', kind: 'money', placeholder: '12.80' },
+  currency: { label: 'Currency', kind: 'currency', placeholder: 'USD' },
+  moq: { label: 'MOQ (units)', kind: 'int', placeholder: '1000' },
+  lead_time_days: { label: 'Lead time (days)', kind: 'int', placeholder: '10' },
+  quantity_quoted: { label: 'Quantity quoted', kind: 'int', placeholder: '2000' },
+  supplier_name: { label: 'Supplier name', kind: 'text', placeholder: 'as printed on the document' },
+  supplier_id: { label: 'Supplier id', kind: 'text', placeholder: 'derived from the name if empty' },
+  quote_id: { label: 'Quote reference', kind: 'text', placeholder: 'e.g. BOR-2026-0418' },
+  payment_terms: { label: 'Payment terms', kind: 'text', placeholder: 'Net 30' },
+  shipping_cost: { label: 'Shipping cost', kind: 'money', placeholder: '0' },
+  discount_pct: { label: 'Discount %', kind: 'pct', placeholder: '0' },
+  validity_date: { label: 'Valid until', kind: 'date' },
+  capacity_units: { label: 'Capacity (units)', kind: 'int' },
+  llm_stated_total: { label: 'Total printed on the document', kind: 'money', placeholder: 'left empty = no total printed' },
+}
+const CRITICAL = new Set(['unit_price', 'currency', 'moq', 'lead_time_days', 'quantity_quoted'])
+/** Prefilled only when the human already confirmed the field (confidence 1.0); the placeholder quote's zeros stay blank. */
+const isConfirmed = (quote: Run['quotes'][number] | undefined, f: string) => (quote?.field_confidence[f] ?? 0) >= 1
+
+/**
+ * Manual extraction (T17, PLAN.md G6): the LLM never saw this document, so the person reads the text on the left and
+ * types every field on the right. Critical fields are required; the rest default like the Document Agent would
+ * (shipping 0, discount 0, no validity date). Nothing here is AI-generated: values go straight to the engine.
+ */
+function ManualQuoteForm({
+  quoteId,
+  fields,
+  quote,
+  text,
+  detail,
+  busy,
+  onSubmit,
+}: {
+  quoteId: string
+  fields: string[]
+  quote: Run['quotes'][number] | undefined
+  text: string
+  detail: ManualExtractionDetail
+  busy: boolean
+  onSubmit: (patch: Record<string, unknown>) => void
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      fields.map((f) => {
+        if (isConfirmed(quote, f)) return [f, String((quote as unknown as Record<string, unknown>)[f] ?? '')]
+        return [f, f === 'currency' ? 'USD' : '']
+      }),
+    ),
+  )
+  const missing = fields.filter((f) => CRITICAL.has(f) && values[f].trim() === '')
+  const input = 'mono w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100 focus:border-emerald-500 focus:outline-none'
+  const inputProps = (kind: FieldKind) =>
+    kind === 'int'
+      ? { type: 'number', min: 0, step: 1 }
+      : kind === 'date'
+        ? { type: 'date' }
+        : kind === 'currency'
+          ? { maxLength: 3, pattern: '[A-Z]{3}' }
+          : kind === 'pct'
+            ? { inputMode: 'decimal' as const, pattern: String.raw`^\d+(\.\d+)?$` }
+            : kind === 'money'
+              ? { inputMode: 'decimal' as const, pattern: String.raw`^\d+(\.\d{1,2})?$` }
+              : {}
+  return (
+    <div className="rounded border border-red-900/70 bg-zinc-950/60 p-3 text-sm">
+      <div className="mb-2 flex items-baseline justify-between gap-3">
+        <span className="font-medium text-zinc-100">
+          {detail.filename} <span className="ml-1 rounded bg-red-900/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-200">AI unavailable · manual entry</span>
+        </span>
+        <span className="mono truncate text-xs text-zinc-500" title={detail.detail}>
+          {quoteId}
+        </span>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] gap-3">
+        <div className="min-h-0">
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">Document text (read-only)</div>
+          {/* Supplier text is untrusted (G4): escaped plain text only. */}
+          <pre className="mono max-h-[56vh] overflow-y-auto whitespace-pre-wrap break-words rounded border border-zinc-800 bg-zinc-950 p-2 text-[11px] leading-relaxed text-zinc-300">{text}</pre>
+        </div>
+        <div>
+          <div className="mb-1 text-[10px] uppercase tracking-wider text-zinc-500">
+            Quote fields <span className="text-red-300">* critical</span>
+          </div>
+          <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
+            {fields.map((f) => {
+              const spec = FIELD_SPEC[f] ?? { label: f, kind: 'text' as FieldKind }
+              const critical = CRITICAL.has(f)
+              return (
+                <label key={f} className={`text-xs ${critical ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                  {spec.label}
+                  {critical && <span className="text-red-300"> *</span>}
+                  <input
+                    className={`${input} ${critical && values[f].trim() === '' ? 'border-red-800' : ''}`}
+                    value={values[f]}
+                    placeholder={spec.placeholder}
+                    disabled={busy}
+                    {...inputProps(spec.kind)}
+                    onChange={(e) => setValues({ ...values, [f]: spec.kind === 'currency' ? e.target.value.toUpperCase() : e.target.value })}
+                  />
+                </label>
+              )
+            })}
+          </div>
+          <div className="mt-3 flex items-center gap-3">
+            <Button disabled={busy || missing.length > 0} onClick={() => onSubmit(manualPatch(values))}>
+              {busy ? 'Saving…' : 'Save quote'}
+            </Button>
+            <span className="text-[11px] text-zinc-500">{missing.length > 0 ? `fill ${missing.map((f) => FIELD_SPEC[f]?.label ?? f).join(', ')}` : 'confidence becomes 100% on every saved field; the engine does the rest'}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Typed-in values → correct-quote patch: empty fields are left out (backend defaults), integers go as numbers,
+ *  money and percentages stay strings (never floats), the currency is upper-cased. */
+function manualPatch(values: Record<string, string>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {}
+  for (const [k, raw] of Object.entries(values)) {
+    const v = raw.trim()
+    if (v === '') continue
+    const kind = FIELD_SPEC[k]?.kind ?? 'text'
+    patch[k] = kind === 'int' ? Number(v) : kind === 'currency' ? v.toUpperCase() : v
+  }
+  return patch
 }
 
 /**
