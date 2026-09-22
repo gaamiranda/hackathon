@@ -345,3 +345,26 @@ def test_comparison_endpoint_shape_and_409_before_validation():
         assert borealis["landed_cost"] == "27618.42" and borealis["negotiated"] is False and borealis["negotiated_offer"] is None
         assert Decimal(borealis["discount_pct"]) == Decimal("2")
         assert borealis["payment_terms"] == "Net 45" and borealis["capacity_units"] == 4000
+
+
+def test_fresh_reachable_probe_clears_a_stale_route_failure(monkeypatch):
+    """T18 drill a: OpenClaw stopped (real call failed) then restarted — the next fresh probe that finds it reachable
+    must clear "degraded" even if no further live call happens (a replay demo never makes one)."""
+    tracker = RouteTracker()
+    s = live()
+    probes = {"openclaw": "unreachable", "gateway": "reachable"}
+    monkeypatch.setattr(app_module, "get_settings", lambda: s)
+    monkeypatch.setattr(app_module, "probe_openclaw", lambda settings: probes["openclaw"])
+    monkeypatch.setattr(app_module, "probe_gateway", lambda settings: probes["gateway"])
+    tracker.record("openclaw", False, "connection refused")
+    with TestClient(app_module.app) as client:
+        client.app.state.health_probes = HealthProbes(tracker=tracker)
+        assert client.get("/health").json()["llm"] == "degraded"
+        probes["openclaw"] = "reachable"
+        assert client.get("/health").json()["llm"] == "degraded", "cached probe: nothing changes inside the TTL"
+        client.app.state.health_probes.invalidate()
+        body = client.get("/health").json()
+        assert body["llm"] == "ok" and "openclaw" not in body["llm_routes"]
+        # a failure newer than the last probe still counts until the next fresh probe
+        tracker.record("openclaw", False, "503")
+        assert client.get("/health").json()["llm"] == "degraded"

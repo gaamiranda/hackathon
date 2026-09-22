@@ -5,7 +5,7 @@ Usage: cd backend && uv run python scripts/demo_week1.py [http://127.0.0.1:8000]
 
 import json
 import sys
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -13,6 +13,13 @@ import httpx
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES, SYNTHETIC = ROOT / "data" / "fixtures", ROOT / "data" / "synthetic"
 DOCS = ["supplier_a_apex.pdf", "supplier_b_borealis.xlsx", "supplier_c_cobalt.eml.txt"]
+DELIVERY_WINDOW_DAYS = 14  # PLAN.md §15
+
+
+def demo_required_by() -> str:
+    """Today in UTC + 14 days — the same clock the backend stamps created_at with, so the delivery window
+    (and with it the Decision Agent's prompt and cache key) is 14 d whatever the laptop's timezone or the hour."""
+    return (datetime.now(timezone.utc).date() + timedelta(days=DELIVERY_WINDOW_DAYS)).isoformat()
 
 
 def main(base_url: str) -> tuple[httpx.Client, str, dict]:
@@ -23,7 +30,7 @@ def main(base_url: str) -> tuple[httpx.Client, str, dict]:
     fixture = json.loads((FIXTURES / "ProcurementRequest.json").read_text())
     body = {"request": {k: fixture[k] for k in ("product", "quantity", "budget", "currency")}}
     # The fixture's fixed date drifts past the suppliers' lead times; keep the 14-day window relative to today.
-    body["request"]["required_by"] = (date.today() + timedelta(days=14)).isoformat()
+    body["request"]["required_by"] = demo_required_by()
     created = c.post("/runs", json=body).raise_for_status().json()
     run_id = created["run_id"]
     print(f"run {run_id} created: state={created['run']['state']}")

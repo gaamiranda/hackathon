@@ -6,7 +6,8 @@ Two cheap signals, no extra network calls on the hot path:
 - /health adds the ≤ 2 s probes (OpenClaw's GET /health, the gateway's GET /api/tags) and combines both.
 
 A route is "bad" when its probe says unreachable or its last real call failed; the status clears on the next
-successful call or probe. Mock mode has no LLM and is always "ok".
+successful call, or on the next fresh probe that finds the route reachable again (a failure older than that probe
+is forgotten). Mock mode has no LLM and is always "ok".
 """
 
 from dataclasses import dataclass
@@ -45,6 +46,15 @@ class RouteTracker:
 
     def reset(self) -> None:
         self.last.clear()
+
+    def forget_failure_before(self, route: str, at: datetime) -> bool:
+        """Drop a failed attempt older than `at` — a fresh probe just saw the route up again (T18 drill a: after
+        OpenClaw is restarted, a replay demo may never make another real call, so the failure would stick)."""
+        attempt = self.last.get(route)
+        if attempt is None or attempt.ok or attempt.at >= at:
+            return False
+        del self.last[route]
+        return True
 
     def as_json(self) -> dict[str, dict[str, object]]:
         return {route: attempt.as_json() for route, attempt in self.last.items()}

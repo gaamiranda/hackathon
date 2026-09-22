@@ -3,6 +3,7 @@
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,11 +65,17 @@ class HealthProbes:
     def snapshot(self, s: Settings) -> dict[str, object]:
         now = time.monotonic()
         if self._cached is None or now - self._at > self.ttl_s:
+            probed_at = datetime.now(timezone.utc)
             with ThreadPoolExecutor(max_workers=2) as pool:
                 openclaw, gateway = pool.submit(openclaw_status, s), pool.submit(gateway_status, s)
                 openclaw_state, gateway_state = openclaw.result(), gateway.result()
             self._cached = {"openclaw": openclaw_state, "gateway": gateway_state}
             self._at = now
+            # A route that answers its probe again has recovered: a failure recorded before the probe no longer
+            # counts (T18 drill a — otherwise the "degraded" banner outlives an OpenClaw restart until the next live call).
+            for route, state in self._cached.items():
+                if state == "reachable":
+                    self.tracker.forget_failure_before(route, probed_at)
         probes = self._cached
         status: LlmStatus = llm_status(s, self.tracker, openclaw=_probed(probes["openclaw"]), gateway=_probed(probes["gateway"]))
         return {**probes, "llm": status, "llm_routes": self.tracker.as_json()}

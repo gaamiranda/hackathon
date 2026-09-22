@@ -89,6 +89,19 @@ clear-runs:
     ssh -i "$key" "$host" "rm -rf $dir/* && systemctl --user restart procureai-backend && sleep 2 && curl -s http://127.0.0.1:8000/health"
     echo
 
+# Seed a fresh demo run to STAGE (created | extracted | mismatch | recommended | negotiated | replanned | po) on the box; --base http://127.0.0.1:8000 for a local backend
+seed STAGE *ARGS:
+    @cd backend && uv run python scripts/seed_demo.py {{ STAGE }} {{ ARGS }}
+
+# Reset the stage between dry runs: clear-runs (asks first) then seed one fresh run in CREATED
+demo-reset:
+    just clear-runs
+    just seed created
+
+# Pre-flight checklist against the box (docs/PREFLIGHT.md): PASS/FAIL per line, non-zero exit on any FAIL
+preflight *ARGS:
+    scripts/preflight.sh {{ ARGS }}
+
 # Week 1 demo over HTTP against a running backend
 demo:
     cd backend && uv run python scripts/demo_week1.py
