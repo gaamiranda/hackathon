@@ -46,6 +46,7 @@ def health(request: Request) -> dict[str, object]:
         "llm_gateway": "configured" if s.LLM_GATEWAY_URL and s.LLM_GATEWAY_API_KEY else "unconfigured",
         "llm_backend": s.LLM_BACKEND,
         "openclaw": openclaw_status(s),
+        "openclaw_tasks": sorted(s.openclaw_tasks) if s.LLM_BACKEND == "openclaw" else [],
         "guardrail_judge": s.GUARDRAIL_JUDGE,
         "judge_model": s.TYPESAFE_MODEL if s.GUARDRAIL_JUDGE == "jev" else None,
         "runs": len(get_orchestrator(request).store.list_runs()),

@@ -16,9 +16,10 @@ model to copy them verbatim from `GET /runs`.
 | `procureai-run-status` | `GET /runs/{id}` | state, recommendation + scores, pending human gate |
 | `procureai-approve-negotiation` | `POST /runs/{id}/negotiation/{sid}/approve` with `{}` | only after an explicit "yes" in chat; never edits the draft |
 
-Deliberately absent: anything that generates a PO or edits negotiation text. Deploy with
-`scp -r openclaw/skills/* ubuntu@47.129.120.76:~/.openclaw/workspace/skills/` (hot-reloaded). Until the
-backend is deployed on the box (T10c), test with `just tunnel-reverse` and a local backend on :8000.
+Deliberately absent: anything that generates a PO or edits negotiation text. `just deploy` rsyncs this
+directory to `~/.openclaw/workspace/skills/` (hot-reloaded) and the backend now runs on the box at
+`127.0.0.1:8000` (T10c, docs/DEPLOY.md); `just tunnel-reverse` is only for testing the skills against a
+local backend.
 
 ## The `procureai` agent (`agents.entries.procureai` in `~/.openclaw/openclaw.json`)
 

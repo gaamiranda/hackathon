@@ -1,0 +1,21 @@
+# ProcureAI backend — systemd USER unit (same pattern as openclaw-gateway.service; linger is enabled for ubuntu).
+# Installed by scripts/deploy.sh to ~/.config/systemd/user/procureai-backend.service on the Lightsail box.
+# Loopback only: nginx proxies /api/ → 127.0.0.1:8000 (deploy/nginx-procureai.conf). One worker on purpose —
+# RunStore is in-memory and per process, so a restart (or a second worker) would lose / split the runs.
+[Unit]
+Description=ProcureAI backend (FastAPI on 127.0.0.1:8000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/ubuntu/procureai/backend
+# Secrets live only in this file on the box (copied from backend/.env.example); never in the repo.
+EnvironmentFile=/home/ubuntu/procureai/backend/.env
+ExecStart=/home/ubuntu/procureai/backend/.venv/bin/uvicorn procureai.api.app:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

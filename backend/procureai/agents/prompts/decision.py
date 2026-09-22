@@ -4,6 +4,10 @@ Two single-shot JSON tasks. The model only ever sees engine output (scorecards, 
 diff lines) — never document or supplier text — and is told to copy numbers, not compute them; a
 deterministic guard in agents/decision.py rejects any number that is not in the input anyway.
 json_mode adds the "single JSON object, no fences" line, so it is not repeated here.
+
+RULES_REMINDER closes the *user* message of both tasks (D29): through OpenClaw our system message
+sits inside the agent's own ~3k-token prompt and the numbers rule got diluted — all three rationales
+tripped the guard in T10b. Restating it right before the model answers is harmless on the direct route.
 """
 
 # task="explain": the recommendation rationale (LLM_MODEL). Input built by LiveDecisionAgent.rationale_input.
@@ -46,6 +50,25 @@ Rules: use ONLY numbers in the input, copied as written. Never compute, round or
 never state a difference, saving or gap between numbers, compare in words (higher, cheaper). \
 Call suppliers by name. Invent nothing.\
 """
+
+# Appended after the JSON payload in the user message of both tasks (LiveDecisionAgent._ask). No digits in
+# here: the number guard treats the whole user message as the allowed set.
+RULES_REMINDER = """\
+RULES (apply strictly): use only numbers that appear in the JSON above, copied exactly as written; \
+never compute, round, subtract or state a difference, saving, percentage or gap; compare in words \
+(higher, cheaper, faster). Answer with the JSON object described above and nothing else.\
+"""
+
+
+def user_message(payload_json: str) -> str:
+    """The user message the model sees: the compact JSON payload, then the rules reminder."""
+    return f"{payload_json}\n\n{RULES_REMINDER}"
+
+
+def payload_of(user: str) -> str:
+    """Inverse of user_message(): the JSON part of a recorded user message (tests, cache inspection)."""
+    return user.removesuffix(RULES_REMINDER).rstrip()
+
 
 RATIONALE_KEYS = ("rationale", "key_tradeoff", "escalation_note")
 CHANGE_KEYS = ("explanation",)

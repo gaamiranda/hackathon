@@ -13,6 +13,7 @@ import pytest
 from procureai.agents.decision import LiveDecisionAgent, foreign_numbers, numbers_in
 from procureai.agents.factory import build_agents
 from procureai.agents.mock import MockDecisionAgent
+from procureai.agents.prompts.decision import RULES_REMINDER, payload_of
 from procureai.config.settings import Settings
 from procureai.domain.models import WorkflowState as S
 from procureai.llm.base import LLMUnavailable
@@ -95,7 +96,7 @@ def test_post_interrupt_explanation_says_recommendation_changed_to_cobalt(orch, 
     assert [t for t, _ in fast.calls] == ["explain_diff", "explain_diff"]  # after negotiation, after the interrupt
     assert_grounded(change, fast.calls[-1][1])
     assert_grounded(run.recommendation.rationale, spy.calls[-1][1])
-    assert "Request changed" in json.loads(fast.calls[-1][1])["what_changed"][0]
+    assert "Request changed" in json.loads(payload_of(fast.calls[-1][1]))["what_changed"][0]
 
 
 def test_post_negotiation_explanation_keeps_borealis(orch, request_, config):
@@ -106,7 +107,7 @@ def test_post_negotiation_explanation_keeps_borealis(orch, request_, config):
     assert rec.change_explanation.startswith("The recommended supplier remains Borealis"), rec.change_explanation
     assert "12.40" in rec.change_explanation and "12.45" in rec.change_explanation
     assert_grounded(rec.change_explanation, fast.calls[0][1])
-    assert json.loads(fast.calls[0][1])["what_changed"][0].startswith("Borealis Manufacturing AS (sup_b): negotiated unit price 12.80 to 12.40")
+    assert json.loads(payload_of(fast.calls[0][1]))["what_changed"][0].startswith("Borealis Manufacturing AS (sup_b): negotiated unit price 12.80 to 12.40")
 
 
 def test_only_engine_output_reaches_the_model(orch, spy, request_, config):
@@ -116,7 +117,8 @@ def test_only_engine_output_reaches_the_model(orch, spy, request_, config):
     fast = orch.agents["decision"].llm_fast
     reply_texts = [t.message for th in run.negotiations.values() for t in th.turns]
     for _, user in spy.calls + fast.calls:
-        payload = json.loads(user)
+        assert user.endswith(RULES_REMINDER), "the numbers rule closes every user message (D29)"
+        payload = json.loads(payload_of(user))
         assert INJECTION not in user and "SYSTEM NOTE" not in user
         assert not any(q.raw_excerpt and q.raw_excerpt in user for q in run.quotes)
         assert not any(text in user for text in reply_texts)

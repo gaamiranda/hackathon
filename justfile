@@ -59,9 +59,13 @@ judge-live *ARGS:
 tunnel:
     ssh -N -L 18789:127.0.0.1:18789 -i ~/.ssh/LightsailDefaultKey-ap-southeast-1.pem ubuntu@47.129.120.76
 
-# Reverse tunnel for the OpenClaw skills: box 127.0.0.1:8000 → your local backend on :8000 (until the backend is deployed there, T10c)
+# Reverse tunnel for the OpenClaw skills: box 127.0.0.1:8000 → your local backend on :8000 (stop the deployed backend on the box first: systemctl --user stop procureai-backend)
 tunnel-reverse:
     ssh -N -R 8000:127.0.0.1:8000 -i ~/.ssh/LightsailDefaultKey-ap-southeast-1.pem ubuntu@47.129.120.76
+
+# Deploy to the Lightsail box (frontend build + rsync + uv sync + units + restart); docs/DEPLOY.md
+deploy *ARGS:
+    scripts/deploy.sh {{ ARGS }}
 
 # Week 1 demo over HTTP against a running backend
 demo:

@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     OPENCLAW_TOKEN: str = ""  # gateway.auth.token from ~/.openclaw/openclaw.json on the box; backend/.env only
     OPENCLAW_MODEL: str = "openclaw/procureai"  # an agent target, not a provider model (docs/OPENCLAW.md Q1)
     OPENCLAW_TIMEOUT_S: float = 90
+    # Which tasks take the OpenClaw route when LLM_BACKEND=openclaw (comma list; D29). Anything not listed goes
+    # straight to the direct gateway without counting as a fallback, so a task whose prose keeps tripping the
+    # number guard through OpenClaw can be pinned to the gateway without losing the route for the rest.
+    OPENCLAW_TASKS: str = "extract,explain,explain_diff,draft"
 
     # Guardrail judge (PLAN.md D20, T14): TypeSafe Jev answers typed yes/no questions with probabilities; it never
     # generates text or decides anything. The mock keeps the pipeline identical without credentials or network.
@@ -47,6 +51,10 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
     MAX_DOCUMENT_CHARS: int = 6000  # gateway body limit headroom (PLAN.md §2)
+
+    @property
+    def openclaw_tasks(self) -> frozenset[str]:
+        return frozenset(t.strip() for t in self.OPENCLAW_TASKS.split(",") if t.strip())
 
 
 @lru_cache

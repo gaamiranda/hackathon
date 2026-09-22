@@ -16,7 +16,13 @@ from typing import Any
 
 from procureai.agents.base import Explanation
 from procureai.agents.mock import MockDecisionAgent
-from procureai.agents.prompts.decision import CHANGE_KEYS, CHANGE_SYSTEM, RATIONALE_KEYS, RATIONALE_SYSTEM
+from procureai.agents.prompts.decision import (
+    CHANGE_KEYS,
+    CHANGE_SYSTEM,
+    RATIONALE_KEYS,
+    RATIONALE_SYSTEM,
+    user_message,
+)
 from procureai.config.settings import Settings
 from procureai.domain.models import (
     ProcurementRequest,
@@ -156,7 +162,7 @@ class LiveDecisionAgent:
     # ------------------------------------------------------------------ one guarded call
 
     def _ask(self, llm: LLMClient, task: str, system: str, payload: dict, max_tokens: int, keys: tuple[str, ...]) -> dict | None:
-        user = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        user = user_message(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
         try:
             result = llm.complete(task, system, user, max_tokens=max_tokens, json_mode=True)
         except (LLMUnavailable, LLMRequestTooLarge) as exc:  # G6: templated text keeps the run alive

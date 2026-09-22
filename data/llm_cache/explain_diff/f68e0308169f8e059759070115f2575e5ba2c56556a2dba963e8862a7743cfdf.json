@@ -1,0 +1,39 @@
+{
+  "request": {
+    "model": "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "task": "explain_diff",
+    "system": "You are the Decision Agent of a procurement assistant. The engine has re-scored the supplier quotes after a change (a buyer requirement change, or negotiated offers). You explain what changed and why to a procurement manager; never change scores or re-rank.\n\nInput: JSON with what_changed, diff_lines (engine facts, in order), recommended_before, recommended_after and per-supplier before/after figures (before null = not scored before).\n\nReturn a JSON object with one key, explanation: at most 100 words, plain business English, no markdown. The first sentence must say explicitly whether the recommended supplier changed (name both if it did, name it if not) and why. Then the main effects per supplier: one that became ineligible and why, costs or scores that moved.\n\nRules: use ONLY numbers in the input, copied as written. Never compute, round or convert one; never state a difference, saving or gap between numbers, compare in words (higher, cheaper). Call suppliers by name. Invent nothing.",
+    "user": "{\"what_changed\":[\"Request changed (v1 → v2): quantity 2,000 → 5,000; budget 30,000.00 → 75,000.00.\"],\"diff_lines\":[\"Request changed (v1 → v2): quantity 2,000 → 5,000; budget 30,000.00 → 75,000.00.\",\"Recommended supplier changed from sup_b to sup_c.\",\"Landed cost of sup_a changed from 24,852.00 to 61,476.00.\",\"sup_b became ineligible because: quantity 5000 exceeds capacity 4000.\",\"Landed cost of sup_b changed from 26,763.86 to 66,500.90.\",\"Landed cost of sup_c changed from 27,141.00 to 67,852.50.\"],\"recommended_before\":\"Borealis Manufacturing AS\",\"recommended_after\":\"Cobalt Industrial\",\"per_supplier\":[{\"id\":\"sup_c\",\"name\":\"Cobalt Industrial\",\"before\":{\"eligible\":true,\"ineligibility_reasons\":[],\"landed_cost\":\"27,141.00\",\"lead_time_days\":9,\"total_score\":62.9},\"after\":{\"eligible\":true,\"ineligibility_reasons\":[],\"landed_cost\":\"67,852.50\",\"lead_time_days\":9,\"total_score\":62.9}},{\"id\":\"sup_a\",\"name\":\"Apex Components Ltd\",\"before\":{\"eligible\":true,\"ineligibility_reasons\":[],\"landed_cost\":\"24,852.00\",\"lead_time_days\":13,\"total_score\":58.6},\"after\":{\"eligible\":true,\"ineligibility_reasons\":[],\"landed_cost\":\"61,476.00\",\"lead_time_days\":13,\"total_score\":58.6}},{\"id\":\"sup_b\",\"name\":\"Borealis Manufacturing AS\",\"before\":{\"eligible\":true,\"ineligibility_reasons\":[],\"landed_cost\":\"26,763.86\",\"lead_time_days\":10,\"total_score\":66.3},\"after\":{\"eligible\":false,\"ineligibility_reasons\":[\"quantity 5000 exceeds capacity 4000\"],\"landed_cost\":\"66,500.90\",\"lead_time_days\":10,\"total_score\":0.0}}]}\n\nRULES (apply strictly): use only numbers that appear in the JSON above, copied exactly as written; never compute, round, subtract or state a difference, saving, percentage or gap; compare in words (higher, cheaper, faster). Answer with the JSON object described above and nothing else.",
+    "max_tokens": 250,
+    "json_mode": true
+  },
+  "result": {
+    "text": "```json\n{\n  \"explanation\": \"The recommended supplier changed from Borealis Manufacturing AS to Cobalt Industrial because the quantity increased from 2,000 to 5,000, and Borealis became ineligible as quantity 5000 exceeds capacity 4000. Apex Components landed cost changed from 24,852.00 to 61,476.00. Borealis landed cost changed from 26,763.86 to 66,500.90. Cobalt Industrial landed cost changed from 27,141.00 to 67,852.50.\"\n}\n```",
+    "parsed_json": {
+      "explanation": "The recommended supplier changed from Borealis Manufacturing AS to Cobalt Industrial because the quantity increased from 2,000 to 5,000, and Borealis became ineligible as quantity 5000 exceeds capacity 4000. Apex Components landed cost changed from 24,852.00 to 61,476.00. Borealis landed cost changed from 26,763.86 to 66,500.90. Cobalt Industrial landed cost changed from 27,141.00 to 67,852.50."
+    },
+    "raw": {
+      "id": "chatcmpl_a78d7a9e-6a32-45a8-889c-5e7347e68a5b",
+      "object": "chat.completion",
+      "created": 1790066014,
+      "model": "openclaw/procureai",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "```json\n{\n  \"explanation\": \"The recommended supplier changed from Borealis Manufacturing AS to Cobalt Industrial because the quantity increased from 2,000 to 5,000, and Borealis became ineligible as quantity 5000 exceeds capacity 4000. Apex Components landed cost changed from 24,852.00 to 61,476.00. Borealis landed cost changed from 26,763.86 to 66,500.90. Cobalt Industrial landed cost changed from 27,141.00 to 67,852.50.\"\n}\n```"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 2997,
+        "completion_tokens": 139,
+        "total_tokens": 3136
+      }
+    },
+    "latency_ms": 4345,
+    "backend": "openclaw"
+  }
+}

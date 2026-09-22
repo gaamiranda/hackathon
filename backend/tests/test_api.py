@@ -40,7 +40,7 @@ def test_health(client):
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"mode": "mock", "llm_gateway": "unconfigured", "llm_backend": "gateway", "openclaw": "unconfigured",
-                        "guardrail_judge": "mock", "judge_model": None, "runs": 0}
+                        "openclaw_tasks": [], "guardrail_judge": "mock", "judge_model": None, "runs": 0}
 
 
 def test_full_mismatch_flow_over_http(client):

@@ -167,6 +167,35 @@ def test_fallback_does_not_swallow_other_errors():
         client.complete("extract", "s", "u" * 200)
 
 
+# --- per-task routing (D29) -----------------------------------------------------------------------
+
+
+def test_tasks_outside_openclaw_tasks_go_straight_to_the_gateway():
+    """A task pinned to the gateway never touches OpenClaw and is not counted as a fallback."""
+    openclaw_calls: list[httpx.Request] = []
+
+    def openclaw(request: httpx.Request) -> httpx.Response:
+        openclaw_calls.append(request)
+        return completion("from openclaw")
+
+    def gateway(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"message": {"role": "assistant", "content": "from gateway"}, "done": True})
+
+    client = FallbackLLMClient(primary=openclaw_client(openclaw), fallback=gateway_client(gateway),
+                               tasks=frozenset({"extract", "explain_diff"}))
+    assert client.complete("explain", "s", "u").backend == "gateway"
+    assert client.complete("extract", "s", "u").backend == "openclaw"
+    assert len(openclaw_calls) == 1 and client.fallbacks == 0
+
+
+def test_openclaw_tasks_setting_parses_a_comma_list():
+    assert settings().openclaw_tasks == {"extract", "explain", "explain_diff", "draft"}
+    assert settings(OPENCLAW_TASKS=" extract , draft,,").openclaw_tasks == {"extract", "draft"}
+    assert settings(OPENCLAW_TASKS="").openclaw_tasks == frozenset()
+    client = build_llm_client(settings(OPENCLAW_TASKS="extract"))
+    assert client.inner.tasks == {"extract"} and not client.inner.routes_to_primary("explain")
+
+
 # --- cache key independence ----------------------------------------------------------------------
 
 
