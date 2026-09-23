@@ -153,13 +153,13 @@ docs/                see below
 | [PLAN.md](PLAN.md) | the plan of record: scope, architecture, contracts, every decision and why |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | request lifecycle, event contract, LLM call path, engine formulas — read this before Q&A |
 | [docs/DEMO.md](docs/DEMO.md) | the 30-minute demo script, beat by beat, with the plan B ladder |
-| [docs/SLIDES.md](docs/SLIDES.md) | slide outline for segments A and D |
+| [docs/RUNBOOK.md](docs/RUNBOOK.md) | presenter's runbook: what to read, what to show, minute by minute |
 | [docs/INFRA.md](docs/INFRA.md) | the organiser LLM gateway, measured: auth, models, latency, truncation, caching |
 | [docs/OPENCLAW.md](docs/OPENCLAW.md) | the OpenClaw spike and the resulting agent/skill design |
 | [docs/DEPLOY.md](docs/DEPLOY.md) | the Lightsail box: units, nginx, redeploy, emergency switches |
 | [docs/PREFLIGHT.md](docs/PREFLIGHT.md) | the 30-minutes-before checklist |
 | [docs/DRILLS.md](docs/DRILLS.md) | failure rehearsals and demo timings |
-| [docs/screenshots/](docs/screenshots/) | War Room stills for the slides |
+| [docs/screenshots/](docs/screenshots/) | War Room stills (write-up, projector plan B) |
 | [backend/README.md](backend/README.md) · [frontend/README.md](frontend/README.md) · [data/synthetic/README.md](data/synthetic/README.md) · [openclaw/README.md](openclaw/README.md) | per-area setup and click paths |
 
 ## How this repository was built

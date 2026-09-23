@@ -1,6 +1,6 @@
 # ProcureAI — Presenter's Runbook
 
-The one document to follow on demo day. It ties together docs/DEMO.md (what to say), docs/PREFLIGHT.md (what to check), docs/DRILLS.md (what breaks and how it recovers) and docs/SLIDES.md (the deck). If something here disagrees with those files, those files win; fix this one.
+The one document to follow on demo day. It ties together docs/DEMO.md (what to say), docs/PREFLIGHT.md (what to check) and docs/DRILLS.md (what breaks and how it recovers). There are no slides: the README, the three documents, the War Room and the code are the presentation. If something here disagrees with those files, those files win; fix this one.
 
 Slot: 30 minutes. Target: 18 minutes of presentation, the rest Q&A.
 
@@ -15,10 +15,14 @@ Slot: 30 minutes. Target: 18 minutes of presentation, the rest Q&A.
 | 3 | docs/PREFLIGHT.md | The checklist and, above all, the "Segment C commands" section. Nothing in segment C is typed from memory. | 10 min |
 | 4 | docs/DRILLS.md, "Summary" table and drills a, b, g | What happens when OpenClaw or the model dies, with real timings. This is your confidence for segment C. | 10 min |
 | 5 | docs/ARCHITECTURE.md, "Likely questions" and "show me the X" sections | One-paragraph answers and the file to open for each. | 15 min |
-| 6 | docs/SLIDES.md | The deck outline. Build or review the deck against it. | 10 min |
-| 7 | PLAN.md §9 (completed tasks) and §13 (decisions) | Skim. Every "why did you…" question has its answer in a D-number. | 10 min |
+| 6 | PLAN.md §9 (completed tasks) and §13 (decisions) | Skim. Every "why did you…" question has its answer in a D-number. | 10 min |
 
-Files you will open on screen during the code walk (segment D), in this order. Practise the scroll once:
+Things you will show on screen instead of slides, in order of appearance. Practise the scrolls once:
+
+- Segment A: README.md rendered (GitHub, or a local markdown preview; the mermaid diagram must render), then the three files from ~/Desktop/ProcureAI-demo opened in their native viewers.
+- Segment D: the finished run with the "Moments" filter; README "Guardrails, and what they caught"; the three code files below; a terminal running `just test`; docs/DRILLS.md summary table; PLAN.md §13 for one second.
+
+Code walk files:
 
 1. `backend/procureai/engine/costing.py`, function `cost_chain` — five formula lines, one screen.
 2. `backend/procureai/agents/number_guard.py` — the docstring and `numbers_the_model_was_given`.
@@ -56,8 +60,9 @@ Windows and tabs, left to right:
 | Terminal 4 | manual-mode frontend dev server on :5174 | beat 11 |
 | Terminal 5 | `just run` (laptop mock backup) | plan B only |
 | Finder | ~/Desktop/ProcureAI-demo with the three files | beat 1 |
-| Editor | the three code files from section 1 open in tabs | segment D |
-| Deck | slides 1–6 before the demo, 7–10 after | segments A, D |
+| Editor | the three code files from section 1 open in tabs, font ≥ 16 pt | segment D |
+| Browser tab 0 | README.md rendered (repo on GitHub, or local preview) with the mermaid diagram visible | segment A, D |
+| Preview windows | the three demo documents opened (PDF viewer, Excel/Numbers, text editor) | segment A |
 
 Paper: docs/DEMO.md beats table and PREFLIGHT.md "Segment C commands" printed.
 
@@ -68,7 +73,7 @@ Paper: docs/DEMO.md beats table and PREFLIGHT.md "Segment C commands" printed.
 **The day before**
 - `git status` clean on main; `just test` green; `just deploy` if anything changed; `just preflight` ALL PASS.
 - Full rehearsal in the chosen mode (section 2), timed. Fix nothing new; note anything odd.
-- Charge the laptop. Download the slides locally.
+- Charge the laptop. Confirm the README renders with its diagram in the tab you will use (GitHub is fine if the repo is pushed; otherwise a local preview).
 
 **T minus 30 minutes** (docs/PREFLIGHT.md, items 1–15)
 - `just preflight` → ALL PASS. If a FAIL: fix, run again. Do not start with a FAIL.
@@ -79,7 +84,7 @@ Paper: docs/DEMO.md beats table and PREFLIGHT.md "Segment C commands" printed.
 **T minus 5 minutes**
 - Reload tab 1. Header reads "live agents · via openclaw (reachable) · judge Jev", no banner.
 - Terminal 1: `systemctl --user is-active openclaw-gateway procureai-backend` → `active` `active`.
-- Deck on slide 1. Breathe.
+- Tab 0 on the README top. Breathe.
 
 ---
 
@@ -87,8 +92,8 @@ Paper: docs/DEMO.md beats table and PREFLIGHT.md "Segment C commands" printed.
 
 Times are cumulative targets, not limits. The spoken lines are in docs/DEMO.md; this section is the click path and the recovery per beat.
 
-### Segment A — slides 1 to 6 (0:00–3:00)
-Problem, pre-mortem, three layers, the team, the gates. Say the pre-mortem failures by name: they are what the demo will show being caught. Switch to tab 1 on slide 6.
+### Segment A — README + the documents (0:00–3:00)
+Tab 0: read the pitch paragraph in your own words, scroll to "What happens in a run" (six lines), the three-layer table, the diagram, the agents table. Open the three documents from the desktop: "a PDF with a wrong total, a spreadsheet, an email that tries to instruct the AI". Name the four pre-mortem failures: math hallucination, infinite negotiation, price leakage, prompt injection. Switch to tab 1.
 
 ### Segment B — the core run (3:00–13:00)
 
@@ -117,7 +122,7 @@ Commands are in docs/PREFLIGHT.md "Segment C commands". Do them in this order; b
 After: Terminal 1 `is-active` check → active active; tab 1 header without banner.
 
 ### Segment D — evidence and code (17:00–20:00)
-Slide 7 (evidence table). Then the editor: costing.py `cost_chain` (30 s), number_guard.py docstring (20 s), policy.py G2 banner (10 s). Slide 8, 9, 10.
+Tab 1, "Moments" filter on the finished run: scroll top to bottom, one sentence per card (mismatch caught, injection caught twice, leak blocked, requirement changed, recommendation changed, PO after approval). Tab 0, README "Guardrails, and what they caught": the measured numbers. Editor: costing.py `cost_chain` (30 s), number_guard.py docstring (20 s), policy.py G2 banner (10 s). Terminal 2: `just test` (313 passed, no network). docs/DRILLS.md summary table: "we broke it seven ways on purpose". PLAN.md §13 for one second. Then: "What we would do next: real email and ERP connectors, supplier history in DynamoDB, multi-product requests, negotiation boundaries learned from history." Open the floor.
 
 ### Segment E — Q&A (20:00–30:00)
 Answers in docs/DEMO.md and docs/ARCHITECTURE.md. Two prepared demonstrations if asked:
@@ -132,7 +137,7 @@ Answers in docs/DEMO.md and docs/ARCHITECTURE.md. Two prepared demonstrations if
 2. Gateway down too → red banner; manual form for extraction; templated prose; identical numbers. Continue and say so.
 3. Box unreachable → tab 3 (localhost:5173, laptop mock mode). Same click path; chips say "via replay"; say "this is the offline mode we ship for exactly this reason".
 4. Browser tab dies → reopen the run URL; run and timeline are persisted.
-5. Projector dies → the deck has the five screenshots (docs/screenshots/); narrate from them.
+5. Projector dies → docs/screenshots/ on the laptop screen; narrate from them.
 
 ---
 
@@ -148,8 +153,8 @@ Answers in docs/DEMO.md and docs/ARCHITECTURE.md. Two prepared demonstrations if
 
 | Segment | Presenter | Backup |
 |---|---|---|
-| A slides | | |
+| A README + documents | | |
 | B core run (driver + narrator can be two people) | | |
 | C break it | | |
-| D evidence + code | | |
+| D moments + README evidence + code | | |
 | E Q&A: architecture / guardrails / OpenClaw + infra / business | | |
