@@ -45,7 +45,7 @@ systemctl --user stop openclaw-gateway && systemctl --user is-active openclaw-ga
 ```
 
 In the War Room, within 15 s the header shows **AI route degraded: using fallback gateway** (amber). The current run
-is finished (PO_GENERATED), so start one that misses the cache: run list → **Reset to demo request** → set Quantity to
+is finished (PO_GENERATED), so start one that misses the cache: run list → click the preset **Demo A: 2,000 Product X, 14 days, 30,000 USD** → set Quantity to
 **2100** → Create run → drop the three files → Evaluate → Use computed total. Extraction still says *via replay*
 (the documents are the same text); the Decision Agent's chip says **via gateway** and the rationale is real prose.
 Then restore, still on the box:
@@ -60,8 +60,9 @@ it replays entirely (chips *via replay*) — that is why the 2,100 quantity is n
 
 **Beat 11 — kill the model (≈60 s):** on the laptop, tab http://localhost:5174/ (item 13). Create the demo run, drop
 `supplier_a_apex.pdf` only → **AI unavailable · manual entry** form with the document text → type
-`Apex Components Ltd`, unit price `11.20`, quantity `2000`, lead time `13`, currency `USD` → submit → Evaluate →
-Compare tab shows landed 24,852.00 — the same number as on the box. Nothing to restore: this backend is a throwaway.
+`Apex Components Ltd`, unit price `11.20`, MOQ `500`, lead time `13`, quantity `2000`, shipping cost `400`, currency `USD`,
+"Total printed on the document" left empty → **Save quote** → Evaluate → Compare tab shows landed 24,852.00 — the same number as on the box (24,416.00 means the
+shipping cost was left out). Nothing to restore: this backend is a throwaway.
 
 The box variant (drill b in docs/DRILLS.md) is: `sed -i 's|^LLM_GATEWAY_URL=.*|LLM_GATEWAY_URL=http://127.0.0.1:9|' ~/procureai/backend/.env && systemctl --user stop openclaw-gateway && systemctl --user restart procureai-backend`,
 restore with `sed -i 's|^LLM_GATEWAY_URL=.*|LLM_GATEWAY_URL=https://api.softwaresystems.app|' ~/procureai/backend/.env && systemctl --user start openclaw-gateway && systemctl --user restart procureai-backend`.
