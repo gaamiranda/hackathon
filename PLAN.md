@@ -40,7 +40,7 @@ frontend/ (Vite+React+TS)  ──HTTP/SSE──▶  backend/procureai/ (Python 3
                                             └── api/           REST + SSE routes
 openclaw/   agent definitions, skills, system prompts, tool schemas for the OpenClaw runtime
 data/       synthetic quotes (3 layouts), supplier_history.json, procurement_config.json
-docs/       INFRA, OPENCLAW, DEPLOY, DEMO, PREFLIGHT, DRILLS, screenshots/
+docs/       RUNBOOK (presenter's single entry point), DEMO, PREFLIGHT, DRILLS, SLIDES, ARCHITECTURE, INFRA, OPENCLAW, DEPLOY, screenshots/
 scripts/    deploy.sh, preflight.sh; backend/scripts/ demo_*, seed_demo, probe_gateway, export_schemas
 guardrails/ (backend) Jev/mock GuardrailJudge; sim/ scripted supplier; po/ PDF renderer
 ```
