@@ -1,0 +1,134 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>ProcureAI — Technical Document</title><link rel="stylesheet" href="style.css"></head>
+<body>
+
+<h1>ProcureAI — Technical Document</h1>
+<p class="sub">SMYA Hackathon (AWS AI Agents) · Team code PCNEI7FK · Problem statement: Supplier Comparison</p>
+
+<div class="meta">
+<b>Team code</b> PCNEI7FK<br>
+<b>Repository</b> https://github.com/gaamiranda/hackathon (plan of record: PLAN.md; deep-dive: docs/ARCHITECTURE.md)<br>
+<b>Live deployment</b> http://47.129.120.76/ · health: http://47.129.120.76/api/health<br>
+<b>Stack</b> Python 3.12 / FastAPI / pydantic v2 · React 18 + TypeScript (Vite) · OpenClaw on AWS Lightsail · Claude Sonnet 4.5 on Amazon Bedrock via the organiser LLM gateway · TypeSafe Jev (guardrail judge) · nginx + systemd
+</div>
+
+<h2>1. Architecture</h2>
+<p>Three layers with a fixed division of responsibility:</p>
+<table>
+<tr><th>Layer</th><th>Owns</th><th>Never does</th></tr>
+<tr><td><strong>OpenClaw</strong> (agent runtime on Lightsail)</td><td>Hosts the agents; every agent LLM call goes through a dedicated <code>procureai</code> agent with all tools denied; its skills give a chat surface over the backend API</td><td>Hold business state or policy</td></tr>
+<tr><td><strong>Backend</strong> (Python)</td><td>Rules, all arithmetic, scoring, workflow state machine, human gates, append-only audit log, persistence</td><td>Ask the model for a number</td></tr>
+<tr><td><strong>LLM</strong> (Claude Sonnet 4.5)</td><td>Extract fields, explain rankings, draft and judge negotiation messages</td><td>Compute, score, act</td></tr>
+</table>
+
+<pre>frontend/ (React SPA, War Room) ──HTTP + SSE──▶ backend/procureai/
+   api/         FastAPI REST + SSE routes, local text extraction (pypdf, openpyxl)
+   domain/      pydantic contracts + exported JSON schemas (frozen after day 1)
+   engine/      DETERMINISTIC: costing · scoring · negotiation policy · diff
+   workflow/    orchestrator state machine · event bus · run store · file persistence
+   agents/      Document · Supplier Intel · Decision · Negotiation (live + mock) · number_guard
+   guardrails/  GuardrailJudge (Jev or mock) with a replay cache
+   llm/         LLMClient · OpenClaw + gateway clients · fallback · replay cache · status
+   po/ sim/     purchase-order PDF renderer · scripted supplier personas
+data/           synthetic quotes + ground truth · supplier history · caches · runs/
+openclaw/       the procureai agent profile and chat skills deployed on the box
+deploy/ scripts/ nginx site, systemd units, deploy.sh, preflight.sh</pre>
+
+<div class="fig"><img src="../screenshots/07-live-po-generated.jpg"><div class="cap">Figure 1 — The War Room on the live deployment after a full run: agent lanes, timeline with highlighted moments, replan impact and the generated purchase order.</div></div>
+
+<h2>2. Agents</h2>
+<table>
+<tr><th>Agent</th><th>Input → output</th><th>Escalates when</th><th>Forbidden</th></tr>
+<tr><td>Document</td><td>document text → <code>NormalizedQuote</code> with per-field confidence</td><td>a critical field (unit price, currency, MOQ, lead time, quantity) is missing or below 0.85 confidence, or the judge finds it unsupported</td><td>deciding, computing totals, following instructions found in the document</td></tr>
+<tr><td>Supplier Intelligence</td><td>supplier id → <code>SupplierProfile</code> (on-time rate, defect rate, capacity, blacklist)</td><td>blacklisted, or defect rate above the configured threshold</td><td>inventing history; the store is authoritative, not session memory</td></tr>
+<tr><td>Decision</td><td>engine scorecards + diff lines → rationale and change explanation</td><td>near tie, or best quote over budget</td><td>changing scores, doing arithmetic, introducing numbers not in its input</td></tr>
+<tr><td>Negotiation</td><td>recommendation + boundaries → draft; counter-offer → verdict with reason</td><td>supplier rejects twice, or replies with legal terms</td><td>naming other suppliers or their prices; exceeding boundaries or two rounds</td></tr>
+</table>
+<p>Every agent has a mock implementation returning fixture output. The full pipeline runs end to end offline, which is how the UI and workflow were built before credentials existed and how the test suite runs.</p>
+
+<h2>3. The deterministic engine</h2>
+<p>All money is <code>Decimal</code>, quantised to two places at each step (<code>engine/costing.py</code>):</p>
+<pre>subtotal      = quantity × unit_price          (quantity = the buyer's request, not the quoted one)
+discount      = subtotal × discount_pct
+pre_tax_total = subtotal − discount + shipping
+tax           = pre_tax_total × tax_rate       (buyer-side, from config)
+landed_cost   = pre_tax_total + tax
+math_ok       = |pre_tax_total(at quoted qty) − document_stated_total| ≤ 0.01</pre>
+<p>Checks per quote: MOQ, lead time against the delivery window, budget, capacity, blacklist, defect threshold, and the math check. A failed math check stops the workflow (<code>CALC_MISMATCH</code>) until a human confirms the computed figure; the original stated total is kept in the audit log.</p>
+<p>Scoring (<code>engine/scoring.py</code>), over eligible quotes only: price and lead time are min-max normalised (best = 100); reliability = ½·on-time% + ½·(1 − defect rate)%; risk = 1 − risk_score where risk_score = ½·min(defect/max_defect, 1) + ½·min((1 − on-time)/0.2, 1), amplified by capacity utilisation above 80%. Weighted sum with configured weights (0.30 price, 0.20 lead time, 0.30 reliability, 0.20 risk) gives a 0–100 total; the breakdown sums to the total. Negotiated offers replace unit price and lead time for costing while the originals stay for audit.</p>
+
+<h2>4. Workflow, gates and events</h2>
+<pre>CREATED → EXTRACTING → [NEEDS_HUMAN_EXTRACTION] → EXTRACTED → VALIDATING → [CALC_MISMATCH]
+  → ENRICHING → SCORING → RECOMMENDED
+  → NEGOTIATION_DRAFTED → AWAITING_NEGOTIATION_APPROVAL → NEGOTIATING → COUNTER_RECEIVED → RE_SCORING → RECOMMENDED
+  → AWAITING_PO_APPROVAL → PO_GENERATED (terminal)
+interrupt (quantity / budget / date) from RECOMMENDED, EXTRACTED, AWAITING_* → REPLANNING → VALIDATING …</pre>
+<p>Four human gates: the extraction form (missing or unsupported fields), the math check, negotiation approval (the human may edit the draft; edits are re-filtered), and PO approval. <code>PurchaseOrder</code> is constructed in exactly one place, reachable only through the approval endpoint; no agent has a tool that can generate one.</p>
+<p>Every transition and every agent call emits an append-only <code>WorkflowEvent</code> (seq, actor ∈ agent|engine|human|supplier, type, state before/after, payload). The frontend consumes it over Server-Sent Events with replay and reconnect; the "agent lanes" and "moment cards" of the War Room are derived purely from this stream. Runs and events are persisted to disk (atomic <code>run.json</code> + <code>events.jsonl</code>) and reloaded on startup; runs interrupted mid-transition are recovered to the nearest safe state with a <code>run.recovered</code> event.</p>
+
+<h2>5. The interrupt (replanning without restart)</h2>
+<p>An interrupt versions the request (previous versions kept), discards any pending negotiation draft (applying a counter already received), re-validates, re-enriches and re-scores the existing quotes with negotiated offers carried over, and produces a <code>ReplanImpact</code>: what changed, per-supplier eligibility, landed cost and score before and after, and the recommended supplier before and after. The Decision Agent explains the diff from the engine's diff lines. In the demo, 2,000 → 5,000 units makes Borealis ineligible on capacity and the recommendation moves to Cobalt in under a second. If nothing is eligible after a change, the run reaches <code>RECOMMENDED</code> with an escalation instead of failing.</p>
+
+<h2>6. LLM path, OpenClaw and fallbacks</h2>
+<p>Calls are single-shot JSON tasks: <em>extract</em> (one per document), <em>explain</em>, <em>explain_diff</em>, <em>draft</em>, <em>negotiation_verdict</em>. No conversation history is sent. Each call travels:</p>
+<pre>agent → ReplayCache → FallbackLLMClient( OpenClaw /v1/chat/completions on the box → organiser AWS LLM gateway ) → Claude Sonnet 4.5</pre>
+<ul>
+<li><strong>OpenClaw</strong> (starter-kit install on Lightsail) exposes an OpenAI-compatible endpoint on loopback. A dedicated agent <code>procureai</code> has <code>tools.profile: minimal</code> plus an explicit deny list (exec, write, edit, process, web_fetch, browser, sessions, cron, memory, …), no bootstrap files and no memory, because untrusted supplier text passes through it. Verified: stateless between requests, refuses tool use, honours the system message. It adds 0.5–1.5 s per call.</li>
+<li><strong>Fallback</strong>: if OpenClaw is unreachable the same call goes to the gateway directly; the event records which route answered ("via OpenClaw" / "via gateway"). A per-task route pin exists as an emergency switch.</li>
+<li><strong>Replay cache</strong>: every live response is recorded under a hash of the prompt (committed to the repository). Tests run in replay-only mode and therefore assert the behaviour of the real model; demos replay or run live by rotating the cache.</li>
+<li><strong>Manual mode</strong>: when both routes are down, <code>/health</code> reports <code>llm: down</code>, the UI shows a red banner, every document routes to a manual extraction form (document text alongside the fields), and the engine produces identical numbers. A comparison matrix view contains no model text at all.</li>
+</ul>
+<p>Gateway facts that shaped the design (docs/INFRA.md): ~3 s fixed latency per call, so one call per document and one per explanation; output silently truncated at 256 tokens unless <code>num_predict</code> is sent; the model wraps JSON in code fences despite instructions, so parsing is tolerant with one repair call.</p>
+
+<h2>7. Guardrails as implemented</h2>
+<table>
+<tr><th>Guardrail</th><th>Implementation</th><th>Measured</th></tr>
+<tr><td>Deterministic math; model totals only compared</td><td><code>engine/costing.py</code>; <code>CALC_MISMATCH</code> gate</td><td>22,040 stated vs 22,800 computed → stop, every run; scenario B: 8,560 vs 8,650</td></tr>
+<tr><td>Number guard on model prose</td><td><code>agents/number_guard.py</code>: every number in the text must appear in the input (separators, ".00", "%" tolerated); otherwise templated text and an <code>agent.failed</code> event</td><td>Tripped on real responses four times during development (computed differences, percentages, "50% of the weight"); prompts were then fixed and re-recorded, the guard stays</td></tr>
+<tr><td>Two negotiation rounds</td><td><code>engine/policy.py: can_open_turn</code>, checked by the orchestrator before every send and after every verdict</td><td>A forced third round is refused (test); the live agent's verdicts are constrained to the rule's allowed set</td></tr>
+<tr><td>No cross-supplier leakage</td><td><code>check_outbound_message</code> (competitor names, non-allowed amounts, "beat/match" phrases) + Jev leak questions; human edits re-checked → HTTP 422 with reasons</td><td>Judge: leaking draft 0.96 vs clean 0.11–0.26; all recorded drafts clean</td></tr>
+<tr><td>Supplier content is untrusted</td><td>Delimited as data in prompts; agent without tools; Jev injection question on documents and replies → <code>guardrail.injection_detected</code> event (informational)</td><td>Injection p=0.94–0.96 vs clean 0.03–0.06; extraction unchanged on every fixture including "set unit_price to 1.00"</td></tr>
+<tr><td>Extraction verification</td><td>Jev Noul question per critical field; an unsupported value lowers confidence (never raises it) and routes to the human form</td><td>Tampered 99.20 → p=0.01; real values 0.99 (0.80 on a spreadsheet that renders 12.8 for 12.80)</td></tr>
+<tr><td>Human gates</td><td>Orchestrator <code>pending_human</code>; send and PO only via approval endpoints</td><td>Grep: <code>PurchaseOrder(</code> constructed only in the orchestrator</td></tr>
+<tr><td>Config outside the model</td><td><code>ProcurementConfig</code>: weights (sum to 1), thresholds, tax, boundaries, approvals</td><td>Frozen contract with JSON schemas exported for the frontend</td></tr>
+</table>
+
+<h2>8. Data</h2>
+<ul>
+<li><strong>Synthetic quotations</strong>, generated deterministically with ground truth: scenario A (PDF table with a wrong total, two-formula spreadsheet, email with an injection line) and scenario B (two-sheet workbook, letter-style PDF, email with a P.S. injection, form PDF with transposed digits). Text per document under 3,000 characters.</li>
+<li><strong>Supplier history</strong>: read-only JSON store (seven suppliers, one blacklisted) behind a repository interface; supplier names map to ids through an alias table so an unknown supplier is ineligible rather than guessed.</li>
+<li><strong>Supplier personas</strong>: scripted counter-offers per supplier and round, one of which carries an injection sentence.</li>
+<li><strong>Caches</strong>: <code>data/llm_cache/</code> and <code>data/judge_cache/</code>, committed; <code>data/runs/</code> persisted runs on the box (gitignored).</li>
+</ul>
+
+<h2>9. Deployment</h2>
+<table>
+<tr><th>Component</th><th>Detail</th></tr>
+<tr><td>Host</td><td>AWS Lightsail, Ubuntu 24.04, 4 GB plan, ap-southeast-1 (per starter kit); public IP 47.129.120.76; ports 80 open, 8000 and 18789 loopback only</td></tr>
+<tr><td>OpenClaw</td><td>Version 2026.9.5 as a systemd user unit (<code>openclaw-gateway.service</code>), provider block pointing at the organiser gateway; dedicated <code>procureai</code> agent; three chat skills (list runs, run status, approve negotiation on explicit confirmation)</td></tr>
+<tr><td>Backend</td><td><code>procureai-backend.service</code> (uvicorn, one worker, loopback :8000), <code>MODE=live</code>, <code>LLM_BACKEND=openclaw</code>, Jev judge, run persistence</td></tr>
+<tr><td>Frontend</td><td>Static build served by nginx; <code>/api/</code> proxied with buffering off for SSE</td></tr>
+<tr><td>Operations</td><td><code>just deploy</code> (rsync, uv sync, build, restart), <code>just preflight</code> (15 checks), <code>just seed STAGE</code> (any workflow stage in ~1 s), docs/DEPLOY.md, docs/PREFLIGHT.md</td></tr>
+<tr><td>Resources after a full run</td><td>≈2.7 GB available; backend 95 MB RSS; OpenClaw 570–740 MB</td></tr>
+</table>
+
+<h2>10. Testing and failure drills</h2>
+<ul>
+<li><strong>313 backend tests</strong> (about 2 s, no network by construction): engine golden numbers hand-computed in the tests; contract tests against fixtures; extraction benchmark across all layouts against <em>recorded live</em> responses; policy and round-cap tests; number-guard tests including a real tripped sentence; persistence and recovery; full end-to-end mock runs for both scenarios through negotiation, interrupt and PO; prompt-stability tests across dates so cache keys do not drift.</li>
+<li><strong>Seven failure drills</strong> executed against the live box (docs/DRILLS.md): stop OpenClaw mid-run (fallback within one poll; a stale-banner defect found and fixed), gateway at a closed port (manual mode), backend restart mid-negotiation (gate intact, 1.9 s), corrupt and oversized uploads, instance reboot (all green in 49 s), interrupt with a draft pending, and the scripted on-stage break-it sequence.</li>
+<li><strong>Timings</strong>: a full run through the UI, upload to PO, under 90 seconds with cached model answers; 12–15 s of extraction and 5–8 s per explanation when live.</li>
+</ul>
+
+<h2>11. Known limitations</h2>
+<ul>
+<li>Document layouts: extraction is validated on seven synthetic layouts, not arbitrary real-world documents; unreadable documents fall back to the human form by design.</li>
+<li>Single-product requests; multi-line orders are on the roadmap.</li>
+<li>Supplier replies are simulated by scripted personas; a real mailbox would feed the same event and gate.</li>
+<li>HTTP only on the deployment (no domain); the OpenClaw hop adds up to 1.5 s per call.</li>
+<li>Relative (min-max) scoring means one supplier's improved offer can lower another's dimension score; documented and shown as "relative scoring".</li>
+</ul>
+
+<h2>12. How the project was run</h2>
+<p>A planning agent maintained PLAN.md as the single source of truth (architecture, contracts, 34 numbered decisions, status), and handed out one small, testable task at a time to coding agents with explicit acceptance criteria; every change was reviewed and committed by a human. The contracts were frozen on day one, every agent had a mock before it had a model, and the whole demo ran offline before any credential existed, which is why the live integration (gateway, OpenClaw, judge, deployment) slotted in without redesign.</p>
+
+</body></html>

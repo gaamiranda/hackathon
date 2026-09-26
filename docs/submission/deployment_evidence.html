@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Deployment Evidence</title><link rel="stylesheet" href="style.css"></head><body><h1>ProcureAI — Deployment Evidence</h1>
+<p>Team code PCNEI7FK · Problem statement: Supplier Comparison · Captured 2026-09-26</p>
+<h2>Live URL</h2>
+<ul><li>War Room: http://47.129.120.76/</li>
+<li>Health endpoint: http://47.129.120.76/api/health</li>
+<li>Example finished run (negotiated, replanned 2,000 → 5,000, PO generated): http://47.129.120.76/runs/run-75268093</li>
+<li>Purchase order PDF for that run: http://47.129.120.76/api/runs/run-75268093/po.pdf</li></ul>
+<h2>Health at capture time</h2>
+<pre>
+{&quot;mode&quot;:&quot;live&quot;,&quot;llm_gateway&quot;:&quot;configured&quot;,&quot;llm_backend&quot;:&quot;openclaw&quot;,&quot;openclaw&quot;:&quot;reachable&quot;,
+ &quot;gateway&quot;:&quot;reachable&quot;,&quot;llm&quot;:&quot;ok&quot;,&quot;openclaw_tasks&quot;:[&quot;draft&quot;,&quot;explain&quot;,&quot;explain_diff&quot;,&quot;extract&quot;],
+ &quot;guardrail_judge&quot;:&quot;jev&quot;,&quot;judge_model&quot;:&quot;jev-1.13.0&quot;,&quot;runs&quot;:3,&quot;runs_persisted&quot;:true}
+</pre>
+<h2>Infrastructure</h2>
+<table>
+<tr><th>Item</th><th>Value</th></tr>
+<tr><td>Host</td><td>AWS Lightsail, Ubuntu 24.04 LTS, 4 GB plan, region ap-southeast-1 (per sponsor starter kit)</td></tr>
+<tr><td>Public IP</td><td>47.129.120.76 (port 80 via nginx; 8000 and 18789 loopback only)</td></tr>
+<tr><td>Agent runtime</td><td>OpenClaw 2026.9.5, systemd user unit `openclaw-gateway.service`, provider = organiser AWS LLM gateway, model `sonnet4.5:latest` (Claude Sonnet 4.5 on Bedrock)</td></tr>
+<tr><td>Dedicated agent</td><td>`agents.entries.procureai`, tools denied, no bootstrap, stateless per request</td></tr>
+<tr><td>Backend</td><td>`procureai-backend.service` (uvicorn), `MODE=live`, `LLM_BACKEND=openclaw`, Jev judge, runs persisted under `data/runs/`</td></tr>
+<tr><td>Frontend</td><td>Vite build served by nginx, `/api/` proxied with SSE-safe settings</td></tr>
+<tr><td>Deploy</td><td>`scripts/deploy.sh` (`just deploy`); pre-flight `scripts/preflight.sh` (`just preflight`, 15 checks)</td></tr>
+<tr><td>Drills</td><td>docs/DRILLS.md: 7 failure drills executed on this box (runtime down, model down, backend restart, bad uploads, instance reboot, interrupt with draft pending, scripted break-it sequence)</td></tr>
+</table>
+<h2>Screenshots (docs/screenshots/)</h2>
+<ul><li>`06-live-run-list.jpg` — run list on the live deployment, header &quot;live agents · via openclaw (reachable) · judge Jev&quot;</li>
+<li>`07-live-po-generated.jpg` — finished live run: lanes, timeline moments, replan impact, purchase order</li>
+<li>`01`–`05` — War Room stills of the extraction lanes, math gate, injection moment, replan moment and PO moment</li></ul>
+<h2>Reproduce</h2>
+<pre>
+just preflight            # all PASS against the box
+just seed po              # drives a fresh run to PO_GENERATED on the box in ~1 s (cache warm)
+just seed po --scenario b # the second scenario
+</pre><div class="fig"><img src="../screenshots/06-live-run-list.jpg"><div class="cap">Live run list, 2026-09-26.</div></div><div class="fig"><img src="../screenshots/07-live-po-generated.jpg"><div class="cap">Finished live run with the generated purchase order.</div></div></body></html>
